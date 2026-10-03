@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Relevés brasseurs</title>
+<meta name="theme-color" content="#0b5cab">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--ink:#1b2330;--mute:#5d6b7e;--line:#d8dee7;--acc:#0b5cab;--acc2:#e8f1fb;--warn:#b54708;--ok:#13795b}
+@media (prefers-color-scheme:dark){:root{--bg:#10151c;--card:#19212b;--ink:#e6ebf1;--mute:#97a3b3;--line:#2c3746;--acc:#5aa2f0;--acc2:#1c2a3a;--warn:#f5a25d;--ok:#4cc79a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding-bottom:90px}
+header{position:sticky;top:0;z-index:5;background:var(--acc);color:#fff;padding:12px 16px;padding-top:calc(12px + env(safe-area-inset-top));display:flex;align-items:center;gap:10px}
+header h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:8px;padding:8px 12px;font-size:15px}
+main{max-width:760px;margin:0 auto;padding:12px 16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:12px 0}
+.card h2{font-size:16px;margin:0 0 10px;color:var(--acc)}
+details.card>summary{font-weight:600;color:var(--acc);cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+details.card>summary::before{content:"▸";transition:transform .15s}
+details.card[open]>summary::before{transform:rotate(90deg)}
+details.card[open]>summary{margin-bottom:10px}
+label{display:block;font-size:13px;color:var(--mute);margin:8px 0 3px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px}
+textarea{min-height:70px;resize:vertical}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media (max-width:420px){.row3{grid-template-columns:1fr 1fr}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;background:var(--acc);color:#fff;cursor:pointer}
+.btn.sec{background:var(--acc2);color:var(--acc)}
+.btn.del{background:transparent;color:var(--warn);padding:8px}
+.btn.full{width:100%}
+.list .item{display:flex;gap:10px;align-items:center;cursor:pointer}
+.list .item .t{flex:1}
+.list .item small{color:var(--mute);display:block}
+.calc{background:var(--acc2);border-radius:8px;padding:8px 10px;margin-top:10px;font-size:14px}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px}
+.photo{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg)}
+.photo img{width:100%;height:110px;object-fit:cover;display:block}
+.photo input{border:0;border-radius:0;font-size:13px;padding:6px}
+.photo .btn.del{width:100%;font-size:13px}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:10px 16px calc(10px + env(safe-area-inset-bottom));display:flex;gap:10px;justify-content:center;z-index:5}
+.bar .btn{flex:1;max-width:360px}
+.empty{color:var(--mute);text-align:center;padding:30px 10px}
+.miss{color:var(--warn);font-size:14px}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:9;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none;display:block}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<header><button id="back" class="hidden">‹ Visites</button><h1 id="title">Relevés brasseurs</h1><button id="menuBtn" class="hidden">⋯</button></header>
+<main id="app"></main>
+<div class="bar" id="bar"></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="importFile" accept="application/json" class="hidden">
+
+<script src="jspdf.umd.min.js"></script>
+<script>
+"use strict";
+// ---------- stockage (IndexedDB) ----------
+const DB = {
+  db: null,
+  open() { return new Promise((res, rej) => { const r = indexedDB.open("releves", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("visites", { keyPath: "id" });
+    r.onsuccess = () => { this.db = r.result; res(); }; r.onerror = () => rej(r.error); }); },
+  tx(mode) { return this.db.transaction("visites", mode).objectStore("visites"); },
+  all() { return new Promise((res, rej) => { const r = this.tx("readonly").getAll(); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); },
+  put(v) { return new Promise((res, rej) => { const r = this.tx("readwrite").put(v); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); },
+  del(id) { return new Promise((res, rej) => { const r = this.tx("readwrite").delete(id); r.onsuccess = () => res(); r.onerror = () => rej(r.error); }); }
+};
+
+// ---------- modèle ----------
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const today = () => new Date().toISOString().slice(0, 10);
+const TYPES_BAT = ["", "Atelier / industrie", "Entrepôt / logistique", "Showroom / commerce", "Salle de sport / fitness", "Bâtiment agricole", "Bureaux / tertiaire", "ERP / salle polyvalente", "Restaurant", "Autre"];
+const TOITURES = ["", "Plate", "1 pan", "2 pans", "Shed", "Voûte / cintrée", "Faux plafond"];
+const STRUCTURES = ["", "Charpente métallique", "Charpente bois", "Béton / dalle", "Faux plafond", "Autre"];
+const OBJECTIFS = ["Confort d'été", "Déstratification hiver", "Évacuation humidité / séchage", "Bien-être animal", "Autre"];
+const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérifier"];
+
+function newZone(n) { return { id: uid(), nom: "Zone " + n, longueur: "", largeur: "", hSousPlafond: "", hFaitage: "", hSabliere: "",
+  toiture: "", structure: "", entraxe: "", hLibre: "", contraintesHauteur: "", obstacles: "", ouvertures: "", ventilExistante: "",
+  activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
+function newVisite() { return { id: uid(), cree: Date.now(), date: today(), client: "", contact: "", tel: "", email: "", adresse: "", gps: "",
+  typeBat: "", remarques: "", zones: [newZone(1)] }; }
+
+function num(v) { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : null; }
+function fmt(n, d = 1) { return n == null ? "–" : n.toLocaleString("fr-FR", { maximumFractionDigits: d }).replace(/[\u202f\u00a0]/g, " "); }
+function calcZone(z) {
+  const L = num(z.longueur), l = num(z.largeur);
+  const s = L && l ? L * l : null;
+  const hs = num(z.hSousPlafond), hf = num(z.hFaitage), hb = num(z.hSabliere);
+  let hMoy = hs;
+  if (hf && hb) hMoy = (hf + hb) / 2; else if (!hMoy && hf) hMoy = hf;
+  return { surface: s, hMoy, volume: s && hMoy ? s * hMoy : null };
+}
+function manquants(v) {
+  const m = [];
+  if (!v.client) m.push("client");
+  if (!v.adresse) m.push("adresse");
+  v.zones.forEach(z => {
+    const r = [];
+    if (!num(z.longueur)) r.push("longueur"); if (!num(z.largeur)) r.push("largeur");
+    if (!num(z.hSousPlafond) && !num(z.hFaitage)) r.push("hauteur");
+    if (!z.structure) r.push("structure");
+    if (!z.photos.length) r.push("photos");
+    if (r.length) m.push(z.nom + " : " + r.join(", "));
+  });
+  return m;
+}
+
+// ---------- utilitaires UI ----------
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("show"), 2200); }
+let cur = null, saveT = null;
+function save() { clearTimeout(saveT); saveT = setTimeout(() => cur && DB.put(cur), 300); }
+
+function field(obj, key, lbl, type = "text", extra = "") {
+  const id = obj.id + "_" + key;
+  return `<div><label for="${id}">${lbl}</label><input id="${id}" type="${type}" data-o="${obj.id}" data-k="${key}" value="${esc(obj[key])}" ${extra}></div>`;
+}
+function mfield(obj, key, lbl) { return field(obj, key, lbl, "text", 'inputmode="decimal" placeholder="m"'); }
+function area(obj, key, lbl, ph = "") {
+  const id = obj.id + "_" + key;
+  return `<div><label for="${id}">${lbl}</label><textarea id="${id}" data-o="${obj.id}" data-k="${key}" placeholder="${esc(ph)}">${esc(obj[key])}</textarea></div>`;
+}
+function select(obj, key, lbl, opts) {
+  const id = obj.id + "_" + key;
+  return `<div><label for="${id}">${lbl}</label><select id="${id}" data-o="${obj.id}" data-k="${key}">${opts.map(o => `<option ${o === obj[key] ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
+}
+function findObj(id) { return cur.id === id ? cur : cur.zones.find(z => z.id === id); }
+
+// ---------- écran liste ----------
+async function showList() {
+  cur = null; location.hash = "";
+  $("#title").textContent = "Relevés brasseurs"; $("#back").classList.add("hidden"); $("#menuBtn").classList.add("hidden");
+  const vs = (await DB.all()).sort((a, b) => b.cree - a.cree);
+  $("#app").innerHTML = vs.length ? `<div class="list">${vs.map(v => `<div class="card item" data-id="${v.id}"><div class="t"><b>${esc(v.client || "Sans nom")}</b>
+    <small>${esc(v.date)} · ${esc(v.typeBat || "type ?")} · ${v.zones.length} zone(s) · ${v.zones.reduce((n, z) => n + z.photos.length, 0)} photo(s)</small></div><span>›</span></div>`).join("")}</div>`
+    : `<div class="empty">Aucune visite pour l'instant.<br>Appuyez sur « Nouvelle visite » chez le client.</div>`;
+  $("#app").innerHTML += `<div style="text-align:center;margin-top:24px"><button class="btn sec" id="impBtn">Importer une sauvegarde</button></div>`;
+  document.querySelectorAll(".item").forEach(e => e.onclick = () => openVisite(e.dataset.id));
+  $("#impBtn").onclick = () => $("#importFile").click();
+  $("#bar").innerHTML = `<button class="btn" id="newBtn">＋ Nouvelle visite</button>`;
+  $("#newBtn").onclick = async () => { const v = newVisite(); await DB.put(v); openVisite(v.id); };
+}
+
+// ---------- écran visite ----------
+async function openVisite(id) {
+  cur = (await DB.all()).find(v => v.id === id); if (!cur) return showList();
+  location.hash = id;
+  $("#back").classList.remove("hidden"); $("#menuBtn").classList.remove("hidden");
+  renderVisite();
+}
+function renderVisite(openZone) {
+  const v = cur;
+  $("#title").textContent = v.client || "Nouvelle visite";
+  const m = manquants(v);
+  $("#app").innerHTML = `
+  <details class="card" open><summary>Client et site</summary>
+    ${field(v, "client", "Client / raison sociale")}
+    <div class="row">${field(v, "contact", "Contact")}${field(v, "tel", "Téléphone", "tel")}</div>
+    ${field(v, "email", "E-mail", "email")}
+    ${field(v, "adresse", "Adresse du site")}
+    <div class="row">${field(v, "gps", "Position GPS")}<div><label>&nbsp;</label><button class="btn sec full" id="gpsBtn">📍 Localiser</button></div></div>
+    <div class="row">${select(v, "typeBat", "Type de bâtiment", TYPES_BAT)}${field(v, "date", "Date de visite", "date")}</div>
+  </details>
+  ${v.zones.map((z, i) => zoneHtml(z, i, openZone === z.id || (openZone == null && i === v.zones.length - 1))).join("")}
+  <button class="btn sec full" id="addZone">＋ Ajouter une zone</button>
+  <div class="card">${area(v, "remarques", "Remarques générales", "Contexte, demande du client, délais…")}</div>
+  <div class="card"><h2>Vérification</h2>${m.length ? `<div class="miss">À compléter :<br>• ${m.map(esc).join("<br>• ")}</div>` : `<div style="color:var(--ok)">✓ Dossier complet</div>`}</div>
+  <div style="text-align:center"><button class="btn del" id="delVisite">Supprimer cette visite</button></div>`;
+  $("#bar").innerHTML = `<button class="btn" id="sendBtn">📤 Envoyer le dossier (PDF)</button>`;
+  bindVisite();
+  v.zones.forEach(z => initSketch(z));
+}
+function zoneHtml(z, i, open) {
+  const c = calcZone(z);
+  return `<details class="card" data-zone="${z.id}" ${open ? "open" : ""}><summary>${esc(z.nom || "Zone " + (i + 1))}</summary>
+    ${field(z, "nom", "Nom de la zone")}
+    <h2 style="margin-top:14px">Dimensions</h2>
+    <div class="row">${mfield(z, "longueur", "Longueur (m)")}${mfield(z, "largeur", "Largeur (m)")}</div>
+    <div class="row3">${mfield(z, "hSousPlafond", "H. sous plafond (m)")}${mfield(z, "hSabliere", "H. sablière / basse (m)")}${mfield(z, "hFaitage", "H. faîtage / haute (m)")}</div>
+    <div class="calc" id="calc_${z.id}">${calcTxt(c)}</div>
+    <h2 style="margin-top:14px">Toiture et accroche</h2>
+    <div class="row">${select(z, "toiture", "Type de toiture", TOITURES)}${select(z, "structure", "Structure porteuse", STRUCTURES)}</div>
+    <div class="row">${mfield(z, "entraxe", "Entraxe fermes / poutres (m)")}${mfield(z, "hLibre", "Hauteur libre mini (m)")}</div>
+    ${area(z, "contraintesHauteur", "Éléments en hauteur", "Éclairage, sprinklers, gaines, pont roulant, chemins de câbles… avec leur hauteur")}
+    <h2 style="margin-top:14px">Obstacles et ouvertures</h2>
+    ${area(z, "obstacles", "Obstacles au sol", "Rayonnages (hauteur, sens), machines, mezzanine, cloisons…")}
+    ${area(z, "ouvertures", "Ouvertures", "Portes, portails, quais, fenêtres, exutoires (dimensions, position)")}
+    ${area(z, "ventilExistante", "Ventilation / chauffage / clim existants")}
+    <h2 style="margin-top:14px">Usage</h2>
+    ${field(z, "activite", "Activité dans la zone")}
+    <div class="row">${field(z, "personnes", "Nb de personnes", "text", 'inputmode="numeric"')}<div></div></div>
+    <label>Objectifs</label>
+    <div>${OBJECTIFS.map(o => `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 14px 4px 0;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" data-obj="${z.id}" value="${esc(o)}" ${z.objectifs.includes(o) ? "checked" : ""}>${esc(o)}</label>`).join("")}</div>
+    ${area(z, "contraintes", "Contraintes particulières", "Poussière, humidité, bruit, ATEX, hygiène…")}
+    <div class="row">${field(z, "tBas", "T° au sol (°C)", "text", 'inputmode="decimal"')}${field(z, "tHaut", "T° en hauteur (°C)", "text", 'inputmode="decimal"')}</div>
+    <h2 style="margin-top:14px">Électricité</h2>
+    <div class="row">${select(z, "alim", "Alimentation", ALIMS)}${mfield(z, "distTableau", "Distance au tableau (m)")}</div>
+    <h2 style="margin-top:14px">Photos</h2>
+    <div class="photos">${z.photos.map((p, k) => `<div class="photo"><img src="${p.data}" alt=""><input placeholder="Légende" data-cap="${z.id}" data-i="${k}" value="${esc(p.legende)}"><button class="btn del" data-delphoto="${z.id}" data-i="${k}">Supprimer</button></div>`).join("")}</div>
+    <div class="row" style="margin-top:10px"><label class="btn sec" style="margin:0;color:var(--acc)">📷 Prendre une photo<input type="file" accept="image/*" capture="environment" class="hidden" data-photo="${z.id}"></label>
+    <label class="btn sec" style="margin:0;color:var(--acc)">🖼️ Galerie<input type="file" accept="image/*" multiple class="hidden" data-photo="${z.id}"></label></div>
+    <h2 style="margin-top:14px">Croquis</h2>
+    <canvas class="sketch" data-sketch="${z.id}"></canvas>
+    <div style="display:flex;justify-content:flex-end"><button class="btn del" data-clrsketch="${z.id}">Effacer le croquis</button></div>
+    ${area(z, "remarques", "Remarques sur la zone")}
+    ${cur.zones.length > 1 ? `<div style="text-align:center"><button class="btn del" data-delzone="${z.id}">Supprimer la zone</button></div>` : ""}
+  </details>`;
+}
+function calcTxt(c) { return `Surface : <b>${fmt(c.surface)} m²</b> · Hauteur moyenne : <b>${fmt(c.hMoy, 2)} m</b> · Volume : <b>${fmt(c.volume, 0)} m³</b>`; }
+
+function bindVisite() {
+  const app = $("#app");
+  app.oninput = e => {
+    const t = e.target;
+    if (t.dataset.k) {
+      const o = findObj(t.dataset.o); o[t.dataset.k] = t.value; save();
+      if (o === cur && t.dataset.k === "client") $("#title").textContent = t.value || "Nouvelle visite";
+      if (o !== cur) { const c = $("#calc_" + o.id); if (c) c.innerHTML = calcTxt(calcZone(o));
+        if (t.dataset.k === "nom") t.closest("details").querySelector("summary").textContent = t.value || "Zone"; }
+    } else if (t.dataset.cap) { findObj(t.dataset.cap).photos[+t.dataset.i].legende = t.value; save(); }
+  };
+  app.onchange = async e => {
+    const t = e.target;
+    if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck(); }
+    if (t.dataset.obj) { const z = findObj(t.dataset.obj); z.objectifs = [...app.querySelectorAll(`[data-obj="${z.id}"]:checked`)].map(x => x.value); save(); }
+    if (t.dataset.photo) {
+      const z = findObj(t.dataset.photo);
+      for (const f of t.files) z.photos.push({ data: await compress(f), legende: "" });
+      await DB.put(cur); renderVisite(z.id); toast(t.files.length + " photo(s) ajoutée(s)");
+    }
+  };
+  app.onclick = async e => {
+    const t = e.target.closest("button"); if (!t) return;
+    if (t.id === "gpsBtn") return locate();
+    if (t.id === "addZone") { const z = newZone(cur.zones.length + 1); cur.zones.push(z); await DB.put(cur); renderVisite(z.id); return; }
+    if (t.id === "delVisite") { if (confirm("Supprimer définitivement cette visite ?")) { await DB.del(cur.id); showList(); } return; }
+    if (t.dataset.delzone && confirm("Supprimer cette zone ?")) { cur.zones = cur.zones.filter(z => z.id !== t.dataset.delzone); await DB.put(cur); renderVisite(); }
+    if (t.dataset.delphoto && confirm("Supprimer cette photo ?")) { const z = findObj(t.dataset.delphoto); z.photos.splice(+t.dataset.i, 1); await DB.put(cur); renderVisite(z.id); }
+    if (t.dataset.clrsketch) { const z = findObj(t.dataset.clrsketch); z.croquis = ""; save(); initSketch(z); }
+  };
+  $("#sendBtn").onclick = envoyer;
+}
+function refreshCheck() {
+  const m = manquants(cur), box = [...document.querySelectorAll(".card h2")].find(h => h.textContent === "Vérification");
+  if (box) box.parentElement.innerHTML = `<h2>Vérification</h2>${m.length ? `<div class="miss">À compléter :<br>• ${m.map(esc).join("<br>• ")}</div>` : `<div style="color:var(--ok)">✓ Dossier complet</div>`}`;
+}
+function locate() {
+  if (!navigator.geolocation) return toast("Géolocalisation indisponible");
+  toast("Localisation…");
+  navigator.geolocation.getCurrentPosition(p => {
+    cur.gps = p.coords.latitude.toFixed(5) + ", " + p.coords.longitude.toFixed(5);
+    $("#" + cur.id + "_gps").value = cur.gps; save(); toast("Position enregistrée");
+  }, () => toast("Position non disponible"), { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// photos : réduites à 1600 px pour garder des PDF légers
+function compress(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      res(c.toDataURL("image/jpeg", 0.75));
+    };
+    img.onerror = rej; img.src = url;
+  });
+}
+
+// ---------- croquis ----------
+function initSketch(z) {
+  const c = document.querySelector(`[data-sketch="${z.id}"]`); if (!c) return;
+  const r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  c.width = r.width * dpr; c.height = r.height * dpr;
+  const g = c.getContext("2d"); g.scale(dpr, dpr);
+  g.fillStyle = "#fff"; g.fillRect(0, 0, r.width, r.height);
+  g.strokeStyle = "#e6e9ee"; g.lineWidth = 1;
+  for (let x = 0; x < r.width; x += 20) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, r.height); g.stroke(); }
+  for (let y = 0; y < r.height; y += 20) { g.beginPath(); g.moveTo(0, y); g.lineTo(r.width, y); g.stroke(); }
+  if (z.croquis) { const im = new Image(); im.onload = () => g.drawImage(im, 0, 0, r.width, r.height); im.src = z.croquis; }
+  g.strokeStyle = "#111"; g.lineWidth = 2.5; g.lineCap = "round"; g.lineJoin = "round";
+  let drawing = false;
+  const pos = e => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
+  c.onpointerdown = e => { drawing = true; c.setPointerCapture(e.pointerId); const [x, y] = pos(e); g.beginPath(); g.moveTo(x, y); };
+  c.onpointermove = e => { if (!drawing) return; const [x, y] = pos(e); g.lineTo(x, y); g.stroke(); };
+  c.onpointerup = c.onpointercancel = () => { if (!drawing) return; drawing = false; z.croquis = c.toDataURL("image/png"); save(); };
+}
+
+// ---------- PDF ----------
+function buildPdf(v) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 15, CW = W - 2 * M; let y = M;
+  const need = h => { if (y + h > 297 - M) { doc.addPage(); y = M; } };
+  const h1 = t => { need(14); doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(11, 92, 171); doc.text(t, M, y + 6); y += 10; doc.setTextColor(0); };
+  const h2 = t => { need(10); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(t, M, y + 5); y += 7; };
+  const kv = (k, val) => { if (val == null || val === "" || (Array.isArray(val) && !val.length)) return;
+    doc.setFontSize(10); doc.setFont("helvetica", "bold"); const kw = 55;
+    const lines = doc.splitTextToSize(String(Array.isArray(val) ? val.join(", ") : val), CW - kw);
+    need(lines.length * 4.6 + 1); doc.text(k, M, y + 4); doc.setFont("helvetica", "normal"); doc.text(lines, M + kw, y + 4); y += lines.length * 4.6 + 1; };
+  const m = v => (num(v) == null ? "" : fmt(num(v), 2) + " m");
+
+  doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text("Relevé de site – brasseurs d'air", M, y + 7); y += 11;
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(90);
+  doc.text("Pour étude aéraulique Turbobrise · visite du " + new Date(v.date).toLocaleDateString("fr-FR"), M, y + 4); y += 9; doc.setTextColor(0);
+  h1("Client et site");
+  kv("Client", v.client); kv("Contact", v.contact); kv("Téléphone", v.tel); kv("E-mail", v.email);
+  kv("Adresse", v.adresse); kv("GPS", v.gps); kv("Type de bâtiment", v.typeBat); kv("Remarques", v.remarques);
+  const tot = v.zones.reduce((a, z) => { const c = calcZone(z); a.s += c.surface || 0; a.v += c.volume || 0; return a; }, { s: 0, v: 0 });
+  kv("Total", `${v.zones.length} zone(s) · ${fmt(tot.s)} m² · ${fmt(tot.v, 0)} m³`);
+
+  v.zones.forEach(z => {
+    const c = calcZone(z);
+    doc.addPage(); y = M; h1(z.nom || "Zone");
+    h2("Dimensions");
+    kv("Longueur × largeur", `${m(z.longueur) || "?"} × ${m(z.largeur) || "?"}`);
+    kv("H. sous plafond", m(z.hSousPlafond)); kv("H. sablière / basse", m(z.hSabliere)); kv("H. faîtage / haute", m(z.hFaitage));
+    kv("Surface / volume", `${fmt(c.surface)} m² · ${fmt(c.volume, 0)} m³ (h. moy. ${fmt(c.hMoy, 2)} m)`);
+    h2("Toiture et accroche");
+    kv("Toiture", z.toiture); kv("Structure", z.structure); kv("Entraxe", m(z.entraxe)); kv("Hauteur libre mini", m(z.hLibre)); kv("Éléments en hauteur", z.contraintesHauteur);
+    h2("Obstacles et ouvertures");
+    kv("Obstacles au sol", z.obstacles); kv("Ouvertures", z.ouvertures); kv("Ventilation existante", z.ventilExistante);
+    h2("Usage");
+    kv("Activité", z.activite); kv("Personnes", z.personnes); kv("Objectifs", z.objectifs); kv("Contraintes", z.contraintes);
+    kv("Températures", (z.tBas || z.tHaut) ? `sol ${z.tBas || "?"} °C · hauteur ${z.tHaut || "?"} °C` : "");
+    h2("Électricité");
+    kv("Alimentation", z.alim); kv("Distance tableau", m(z.distTableau));
+    kv("Remarques", z.remarques);
+    if (z.croquis) { h2("Croquis"); need(85); doc.addImage(z.croquis, "PNG", M, y, CW, 80); y += 84; }
+    if (z.photos.length) {
+      h2("Photos"); const pw = (CW - 6) / 2;
+      z.photos.forEach((p, i) => {
+        const pr = doc.getImageProperties(p.data), ph = Math.min(pw * pr.height / pr.width, 95);
+        if (i % 2 === 0) need(ph + 8);
+        const x = M + (i % 2) * (pw + 6);
+        doc.addImage(p.data, "JPEG", x, y, pw, ph);
+        if (p.legende) { doc.setFontSize(9); doc.text(doc.splitTextToSize(p.legende, pw), x, y + ph + 4); }
+        if (i % 2 === 1 || i === z.photos.length - 1) y += ph + 9;
+      });
+    }
+  });
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140); doc.text(`${v.client || ""} – page ${i}/${n}`, W - M, 297 - 7, { align: "right" }); }
+  return doc;
+}
+
+async function envoyer() {
+  const m = manquants(cur);
+  if (m.length && !confirm("Il manque encore :\n• " + m.join("\n• ") + "\n\nEnvoyer quand même ?")) return;
+  toast("Génération du PDF…");
+  await DB.put(cur);
+  const doc = buildPdf(cur);
+  const nom = `Releve_${(cur.client || "client").replace(/[^\w-]+/g, "_")}_${cur.date}.pdf`;
+  const blob = doc.output("blob"), file = new File([blob], nom, { type: "application/pdf" });
+  const texte = `Bonjour,\n\nVeuillez trouver ci-joint le relevé du site ${cur.client || ""} (${cur.adresse || ""}) pour l'étude aéraulique.\n\nCordialement`;
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: nom, text: texte }); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  // repli : téléchargement du PDF (ordinateur ou navigateur sans partage)
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast("PDF téléchargé : joignez-le à votre mail ou WhatsApp");
+}
+
+// ---------- menu : sauvegarde / dupliquer ----------
+$("#menuBtn").onclick = async () => {
+  const c = prompt("1 = Exporter une sauvegarde de cette visite\n2 = Dupliquer cette visite\n3 = Aperçu du PDF", "3");
+  if (c === "1") { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(cur)], { type: "application/json" }));
+    a.download = `visite_${(cur.client || "client").replace(/[^\w-]+/g, "_")}_${cur.date}.json`; a.click(); }
+  if (c === "2") { const v = JSON.parse(JSON.stringify(cur)); v.id = uid(); v.cree = Date.now(); v.client += " (copie)"; await DB.put(v); openVisite(v.id); }
+  if (c === "3") { await DB.put(cur); window.open(URL.createObjectURL(buildPdf(cur).output("blob"))); }
+};
+$("#importFile").onchange = async e => {
+  try { const v = JSON.parse(await e.target.files[0].text()); if (!v.zones) throw 0; v.id = uid(); await DB.put(v); toast("Visite importée"); showList(); }
+  catch { toast("Fichier invalide"); }
+  e.target.value = "";
+};
+$("#back").onclick = async () => { if (cur) await DB.put(cur); showList(); };
+window.addEventListener("pagehide", () => cur && DB.put(cur));
+
+// ---------- démarrage ----------
+(async () => {
+  await DB.open();
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  if (location.hash.length > 1) openVisite(location.hash.slice(1)); else showList();
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js");
+})();
+</script>
+</body>
+</html>
