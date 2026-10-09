@@ -53,6 +53,17 @@ textarea{min-height:70px;resize:vertical}
 .toast.show{opacity:1}
 canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none;display:block}
 .hidden{display:none}
+.apercu{position:fixed;inset:0;z-index:20;background:#e9edf2;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.apercu.hidden{display:none}
+.ap-top{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--acc);color:#fff;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
+.ap-top .btn{background:rgba(255,255,255,.2);padding:8px 14px}
+.ap-doc{background:#fff;color:#111;max-width:760px;margin:12px auto 40px;padding:20px 16px;box-shadow:0 1px 4px rgba(0,0,0,.15)}
+.ap-doc h1{font-size:20px;margin:0 0 4px}.ap-sub{color:#5a5a5a;font-size:13px;margin:0 0 10px}
+.ap-doc section{border-top:2px solid #0b5cab;margin-top:18px;padding-top:6px}
+.ap-doc h2{color:#0b5cab;font-size:17px;margin:4px 0 8px}.ap-doc h3{font-size:14px;margin:12px 0 4px}
+.ap-kv{display:grid;grid-template-columns:40% 1fr;gap:8px;font-size:14px;padding:2px 0}.ap-kv span{white-space:pre-wrap}
+.ap-croquis{width:100%;border:1px solid #ccc}
+.ap-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ap-photos figure{margin:0}.ap-photos img{width:100%;display:block}.ap-photos figcaption{font-size:12px}
 .sect{font-size:14px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.03em;margin:22px 0 4px}
 .tag{display:inline-block;font-size:12px;font-weight:600;border-radius:20px;padding:2px 8px;margin-left:6px;vertical-align:middle}
 .tag.enc{background:var(--acc2);color:var(--acc)}
@@ -67,6 +78,7 @@ canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--lin
 <main id="app"></main>
 <div class="bar" id="bar"></div>
 <div class="toast" id="toast"></div>
+<div id="apercu" class="apercu hidden"></div>
 <input type="file" id="importFile" class="hidden">
 
 <script src="jspdf.umd.min.js"></script>
@@ -247,7 +259,7 @@ function renderVisite(openZone) {
     ? `<p style="margin:0 0 10px">✓ <b>Terminé</b>${v.termineLe ? " le " + dateFr(v.termineLe) : ""}</p><button class="btn sec full" id="statutBtn">↺ Remettre en cours</button>`
     : `<p style="margin:0 0 10px"><b>En cours</b></p><button class="btn sec full" id="statutBtn">✓ Marquer comme terminé</button>`}</div>
   <div style="text-align:center"><button class="btn del" id="delVisite">Supprimer cette visite</button></div>`;
-  $("#bar").innerHTML = `<button class="btn" id="sendBtn">📤 Envoyer le dossier (PDF)</button>`;
+  $("#bar").innerHTML = `<button class="btn sec" id="apBtn" style="flex:0 0 auto">👁️ Aperçu</button><button class="btn" id="sendBtn">📤 Envoyer (PDF)</button>`;
   bindVisite();
   v.zones.forEach(z => initSketch(z));
 }
@@ -321,6 +333,7 @@ function bindVisite() {
     if (t.dataset.clrsketch) { const z = findObj(t.dataset.clrsketch); z.croquis = ""; save(); initSketch(z); }
   };
   $("#sendBtn").onclick = envoyer;
+  $("#apBtn").onclick = apercu;
 }
 async function setStatut(termine) {
   cur.statut = termine ? "termine" : "en_cours";
@@ -374,6 +387,30 @@ function initSketch(z) {
 }
 
 // ---------- PDF ----------
+// Contenu du dossier, partagé par le PDF et l'aperçu : pages > sections > lignes [libellé, valeur]
+function contenu(v) {
+  const m = x => (num(x) == null ? "" : fmt(num(x), 2) + " m");
+  const tot = v.zones.reduce((a, z) => { const c = calcZone(z); a.s += c.surface || 0; a.v += c.volume || 0; return a; }, { s: 0, v: 0 });
+  const pages = [{ titre: "Client et site", sections: [{ lignes: [["Client", v.client], ["Contact", v.contact], ["Téléphone", v.tel], ["E-mail", v.email],
+    ["Adresse", v.adresse], ["GPS", v.gps], ["Type de bâtiment", v.typeBat], ["Remarques", v.remarques],
+    ["Total", `${v.zones.length} zone(s) · ${fmt(tot.s)} m² · ${fmt(tot.v, 0)} m³`]] }] }];
+  v.zones.forEach(z => {
+    const c = calcZone(z);
+    pages.push({ titre: z.nom || "Zone", croquis: z.croquis, photos: z.photos, sections: [
+      { titre: "Dimensions", lignes: [["Longueur × largeur", `${m(z.longueur) || "?"} × ${m(z.largeur) || "?"}`],
+        ["H. sous plafond", m(z.hSousPlafond)], ["H. sablière / basse", m(z.hSabliere)], ["H. faîtage / haute", m(z.hFaitage)],
+        ["Surface / volume", `${fmt(c.surface)} m² · ${fmt(c.volume, 0)} m³ (h. moy. ${fmt(c.hMoy, 2)} m)`]] },
+      { titre: "Toiture et accroche", lignes: [["Toiture", z.toiture], ["Structure", z.structure], ["Entraxe", m(z.entraxe)], ["Hauteur libre mini", m(z.hLibre)], ["Éléments en hauteur", z.contraintesHauteur]] },
+      { titre: "Obstacles et ouvertures", lignes: [["Obstacles au sol", z.obstacles], ["Ouvertures", z.ouvertures], ["Ventilation existante", z.ventilExistante]] },
+      { titre: "Usage", lignes: [["Activité", z.activite], ["Personnes", z.personnes], ["Objectifs", z.objectifs], ["Contraintes", z.contraintes],
+        ["Températures", (z.tBas || z.tHaut) ? `sol ${z.tBas || "?"} °C · hauteur ${z.tHaut || "?"} °C` : ""]] },
+      { titre: "Électricité", lignes: [["Alimentation", z.alim], ["Distance tableau", m(z.distTableau)], ["Remarques", z.remarques]] }] });
+  });
+  const vide = x => x == null || x === "" || (Array.isArray(x) && !x.length);
+  pages.forEach(p => p.sections.forEach(sec => sec.lignes = sec.lignes.filter(l => !vide(l[1])).map(([k, x]) => [k, Array.isArray(x) ? x.join(", ") : String(x)])));
+  return { soustitre: "Pour étude aéraulique Turbobrise · visite du " + new Date(v.date).toLocaleDateString("fr-FR"), pages };
+}
+
 function buildPdf(v) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -381,54 +418,52 @@ function buildPdf(v) {
   const need = h => { if (y + h > 297 - M) { doc.addPage(); y = M; } };
   const h1 = t => { need(14); doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(11, 92, 171); doc.text(t, M, y + 6); y += 10; doc.setTextColor(0); };
   const h2 = t => { need(10); doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.text(t, M, y + 5); y += 7; };
-  const kv = (k, val) => { if (val == null || val === "" || (Array.isArray(val) && !val.length)) return;
+  const kv = (k, val) => {
     doc.setFontSize(10); doc.setFont("helvetica", "bold"); const kw = 55;
-    const lines = doc.splitTextToSize(String(Array.isArray(val) ? val.join(", ") : val), CW - kw);
+    const lines = doc.splitTextToSize(val, CW - kw);
     need(lines.length * 4.6 + 1); doc.text(k, M, y + 4); doc.setFont("helvetica", "normal"); doc.text(lines, M + kw, y + 4); y += lines.length * 4.6 + 1; };
-  const m = v => (num(v) == null ? "" : fmt(num(v), 2) + " m");
+  const c = contenu(v);
 
   doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.text("Relevé de site – brasseurs d'air", M, y + 7); y += 11;
   doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(90);
-  doc.text("Pour étude aéraulique Turbobrise · visite du " + new Date(v.date).toLocaleDateString("fr-FR"), M, y + 4); y += 9; doc.setTextColor(0);
-  h1("Client et site");
-  kv("Client", v.client); kv("Contact", v.contact); kv("Téléphone", v.tel); kv("E-mail", v.email);
-  kv("Adresse", v.adresse); kv("GPS", v.gps); kv("Type de bâtiment", v.typeBat); kv("Remarques", v.remarques);
-  const tot = v.zones.reduce((a, z) => { const c = calcZone(z); a.s += c.surface || 0; a.v += c.volume || 0; return a; }, { s: 0, v: 0 });
-  kv("Total", `${v.zones.length} zone(s) · ${fmt(tot.s)} m² · ${fmt(tot.v, 0)} m³`);
-
-  v.zones.forEach(z => {
-    const c = calcZone(z);
-    doc.addPage(); y = M; h1(z.nom || "Zone");
-    h2("Dimensions");
-    kv("Longueur × largeur", `${m(z.longueur) || "?"} × ${m(z.largeur) || "?"}`);
-    kv("H. sous plafond", m(z.hSousPlafond)); kv("H. sablière / basse", m(z.hSabliere)); kv("H. faîtage / haute", m(z.hFaitage));
-    kv("Surface / volume", `${fmt(c.surface)} m² · ${fmt(c.volume, 0)} m³ (h. moy. ${fmt(c.hMoy, 2)} m)`);
-    h2("Toiture et accroche");
-    kv("Toiture", z.toiture); kv("Structure", z.structure); kv("Entraxe", m(z.entraxe)); kv("Hauteur libre mini", m(z.hLibre)); kv("Éléments en hauteur", z.contraintesHauteur);
-    h2("Obstacles et ouvertures");
-    kv("Obstacles au sol", z.obstacles); kv("Ouvertures", z.ouvertures); kv("Ventilation existante", z.ventilExistante);
-    h2("Usage");
-    kv("Activité", z.activite); kv("Personnes", z.personnes); kv("Objectifs", z.objectifs); kv("Contraintes", z.contraintes);
-    kv("Températures", (z.tBas || z.tHaut) ? `sol ${z.tBas || "?"} °C · hauteur ${z.tHaut || "?"} °C` : "");
-    h2("Électricité");
-    kv("Alimentation", z.alim); kv("Distance tableau", m(z.distTableau));
-    kv("Remarques", z.remarques);
-    if (z.croquis) { h2("Croquis"); need(85); doc.addImage(z.croquis, "PNG", M, y, CW, 80); y += 84; }
-    if (z.photos.length) {
+  doc.text(c.soustitre, M, y + 4); y += 9; doc.setTextColor(0);
+  c.pages.forEach((p, n) => {
+    if (n) { doc.addPage(); y = M; }
+    h1(p.titre);
+    p.sections.forEach(sec => { if (sec.titre) h2(sec.titre); sec.lignes.forEach(([k, x]) => kv(k, x)); });
+    if (p.croquis) { h2("Croquis"); need(85); doc.addImage(p.croquis, "PNG", M, y, CW, 80); y += 84; }
+    if (p.photos && p.photos.length) {
       h2("Photos"); const pw = (CW - 6) / 2;
-      z.photos.forEach((p, i) => {
-        const pr = doc.getImageProperties(p.data), ph = Math.min(pw * pr.height / pr.width, 95);
+      p.photos.forEach((ph_, i) => {
+        const pr = doc.getImageProperties(ph_.data), ph = Math.min(pw * pr.height / pr.width, 95);
         if (i % 2 === 0) need(ph + 8);
         const x = M + (i % 2) * (pw + 6);
-        doc.addImage(p.data, "JPEG", x, y, pw, ph);
-        if (p.legende) { doc.setFontSize(9); doc.text(doc.splitTextToSize(p.legende, pw), x, y + ph + 4); }
-        if (i % 2 === 1 || i === z.photos.length - 1) y += ph + 9;
+        doc.addImage(ph_.data, "JPEG", x, y, pw, ph);
+        if (ph_.legende) { doc.setFontSize(9); doc.text(doc.splitTextToSize(ph_.legende, pw), x, y + ph + 4); }
+        if (i % 2 === 1 || i === p.photos.length - 1) y += ph + 9;
       });
     }
   });
   const n = doc.getNumberOfPages();
   for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140); doc.text(`${v.client || ""} – page ${i}/${n}`, W - M, 297 - 7, { align: "right" }); }
   return doc;
+}
+
+// Aperçu : le contenu du PDF affiché dans l'appli, sans rien envoyer ni classer
+function apercu() {
+  const c = contenu(cur), m = manquants(cur);
+  $("#apercu").innerHTML = `<div class="ap-top"><b>Aperçu du dossier</b><button class="btn" id="apClose">Fermer</button></div>
+    <div class="ap-doc">
+      ${m.length ? `<div class="miss" style="margin-bottom:12px">À compléter :<br>• ${m.map(esc).join("<br>• ")}</div>` : ""}
+      <h1>Relevé de site – brasseurs d'air</h1><p class="ap-sub">${esc(c.soustitre)}</p>
+      ${c.pages.map(p => `<section><h2>${esc(p.titre)}</h2>
+        ${p.sections.map(sec => (sec.titre ? `<h3>${esc(sec.titre)}</h3>` : "") + sec.lignes.map(([k, x]) => `<div class="ap-kv"><b>${esc(k)}</b><span>${esc(x)}</span></div>`).join("")).join("")}
+        ${p.croquis ? `<h3>Croquis</h3><img src="${p.croquis}" class="ap-croquis" alt="">` : ""}
+        ${p.photos && p.photos.length ? `<h3>Photos</h3><div class="ap-photos">${p.photos.map(ph => `<figure><img src="${ph.data}" alt="">${ph.legende ? `<figcaption>${esc(ph.legende)}</figcaption>` : ""}</figure>`).join("")}</div>` : ""}
+      </section>`).join("")}
+    </div>`;
+  $("#apercu").classList.remove("hidden"); document.body.style.overflow = "hidden";
+  $("#apClose").onclick = () => { $("#apercu").classList.add("hidden"); document.body.style.overflow = ""; };
 }
 
 async function envoyer() {
