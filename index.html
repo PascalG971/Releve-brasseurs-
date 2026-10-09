@@ -67,7 +67,7 @@ canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--lin
 <main id="app"></main>
 <div class="bar" id="bar"></div>
 <div class="toast" id="toast"></div>
-<input type="file" id="importFile" accept="application/json" class="hidden">
+<input type="file" id="importFile" class="hidden">
 
 <script src="jspdf.umd.min.js"></script>
 <script>
@@ -461,9 +461,9 @@ $("#importFile").onchange = async e => {
     const d = JSON.parse(await e.target.files[0].text()), vs = Array.isArray(d) ? d : [d];
     if (!vs.length || !vs.every(v => v && v.id && Array.isArray(v.zones))) throw 0;
     for (const v of vs) await DB.put(v);
-    toast(vs.length + " dossier(s) importé(s)"); showList();
+    showList(); alert(vs.length + " dossier(s) importé(s) :\n• " + vs.map(v => (v.client || "Sans nom") + (v.supprime ? " (corbeille)" : "")).join("\n• "));
   }
-  catch { toast("Fichier invalide"); }
+  catch { alert("Ce fichier n'est pas une sauvegarde de l'appli. Choisissez le fichier « releves_sauvegarde_… »."); }
   e.target.value = "";
 };
 $("#back").onclick = async () => { if (cur) await saveNow(); showList(); };
