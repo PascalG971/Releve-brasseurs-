@@ -165,7 +165,7 @@ async function showList(corbeille) {
     <small>${v.supprime ? "Supprimé le " + dateFr(v.supprime) : estTermine(v) && v.termineLe ? "Terminé le " + dateFr(v.termineLe) : "Modifié le " + dateFr(v.modifie || v.cree)}</small></div>${v.supprime ? "" : `<button class="poub" data-poub="${v.id}" aria-label="Mettre à la corbeille">🗑️</button>`}<span>›</span></div>`;
   let h = "";
   if (!corbeille && /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone)
-    h += `<div class="alert"><b>Vous êtes dans Safari.</b> Sur iPhone, les relevés faits dans Safari et ceux faits depuis l'icône de l'écran d'accueil sont rangés séparément : un relevé commencé d'un côté n'apparaît pas de l'autre. Utilisez toujours l'icône de l'écran d'accueil.</div>`;
+    h += `<div class="alert"><b>Conseil : installez l'appli sur votre écran d'accueil.</b> Ouverte dans un navigateur, l'iPhone peut effacer vos relevés au bout de quelques jours sans utilisation. Pour l'installer : touchez le bouton de partage (carré avec une flèche vers le haut), puis « Sur l'écran d'accueil », puis « Ajouter ». Ensuite, ouvrez toujours l'appli avec l'icône « Relevés ».</div>`;
   if (corbeille) {
     const vs = all.filter(v => v.supprime);
     h += vs.length ? `<p class="saved">Touchez un dossier pour le restaurer.</p><div class="list">${vs.map(carte).join("")}</div>
