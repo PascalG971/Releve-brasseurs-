@@ -5,7 +5,8 @@ Application de relevés sur site pour l'étude aéraulique des brasseurs d'air (
 Elle remplace le bloc-notes chez le client : fiche client et site, une ou plusieurs zones (cotes, hauteurs, toiture, structure, obstacles, ouvertures, usage, électricité), photos légendées et croquis au doigt. Un bouton génère un PDF de synthèse et ouvre le partage du téléphone (mail, WhatsApp).
 
 - Application web installable (PWA), fonctionne hors connexion.
-- Les visites sont enregistrées uniquement sur le téléphone (aucune donnée client dans ce dépôt).
+- Les visites sont enregistrées automatiquement sur le téléphone (aucune donnée client dans ce dépôt), rangées en « En cours » et « Terminés », avec une corbeille et une sauvegarde de tous les dossiers dans un fichier.
+- iPhone : les données de Safari et celles de l'icône de l'écran d'accueil sont séparées ; toujours utiliser l'icône.
 - Aucune dépendance à installer : fichiers statiques, PDF généré par jsPDF (inclus).
 
 ## Installation sur le téléphone

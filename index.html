@@ -50,6 +50,13 @@ textarea{min-height:70px;resize:vertical}
 .toast.show{opacity:1}
 canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none;display:block}
 .hidden{display:none}
+.sect{font-size:14px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.03em;margin:22px 0 4px}
+.tag{display:inline-block;font-size:12px;font-weight:600;border-radius:20px;padding:2px 8px;margin-left:6px;vertical-align:middle}
+.tag.enc{background:var(--acc2);color:var(--acc)}
+.tag.ter{background:var(--acc2);color:var(--ok)}
+.alert{background:#fff4e5;color:#7a3b00;border:1px solid #f5c58a;border-radius:12px;padding:12px 14px;margin:12px 0;font-size:14px}
+@media (prefers-color-scheme:dark){.alert{background:#3a2a14;color:#f7d7ae;border-color:#6b4a1f}}
+.saved{font-size:12px;color:var(--mute);text-align:center;margin:6px 0}
 </style>
 </head>
 <body>
@@ -87,7 +94,9 @@ function newZone(n) { return { id: uid(), nom: "Zone " + n, longueur: "", largeu
   toiture: "", structure: "", entraxe: "", hLibre: "", contraintesHauteur: "", obstacles: "", ouvertures: "", ventilExistante: "",
   activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
 function newVisite() { return { id: uid(), cree: Date.now(), date: today(), client: "", contact: "", tel: "", email: "", adresse: "", gps: "",
-  typeBat: "", remarques: "", zones: [newZone(1)] }; }
+  typeBat: "", remarques: "", statut: "en_cours", zones: [newZone(1)] }; }
+const estTermine = v => v.statut === "termine";
+const dateFr = t => new Date(t).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 
 function num(v) { const n = parseFloat(String(v).replace(",", ".")); return isFinite(n) ? n : null; }
 function fmt(n, d = 1) { return n == null ? "–" : n.toLocaleString("fr-FR", { maximumFractionDigits: d }).replace(/[\u202f\u00a0]/g, " "); }
@@ -119,7 +128,14 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("show"), 2200); }
 let cur = null, saveT = null;
-function save() { clearTimeout(saveT); saveT = setTimeout(() => cur && DB.put(cur), 300); }
+// Sauvegarde automatique : chaque saisie est enregistrée sur le téléphone quelques instants après.
+async function saveNow() {
+  clearTimeout(saveT); if (!cur) return;
+  cur.modifie = Date.now();
+  try { await DB.put(cur); const e = $("#saved"); if (e) e.textContent = "✓ Enregistré automatiquement à " + new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }); }
+  catch { toast("⚠️ Enregistrement impossible : mémoire du téléphone pleine ?"); }
+}
+function save() { clearTimeout(saveT); saveT = setTimeout(saveNow, 300); }
 
 function field(obj, key, lbl, type = "text", extra = "") {
   const id = obj.id + "_" + key;
@@ -137,18 +153,50 @@ function select(obj, key, lbl, opts) {
 function findObj(id) { return cur.id === id ? cur : cur.zones.find(z => z.id === id); }
 
 // ---------- écran liste ----------
-async function showList() {
+async function showList(corbeille) {
   cur = null; location.hash = "";
-  $("#title").textContent = "Relevés brasseurs"; $("#back").classList.add("hidden"); $("#menuBtn").classList.add("hidden");
-  const vs = (await DB.all()).sort((a, b) => b.cree - a.cree);
-  $("#app").innerHTML = vs.length ? `<div class="list">${vs.map(v => `<div class="card item" data-id="${v.id}"><div class="t"><b>${esc(v.client || "Sans nom")}</b>
-    <small>${esc(v.date)} · ${esc(v.typeBat || "type ?")} · ${v.zones.length} zone(s) · ${v.zones.reduce((n, z) => n + z.photos.length, 0)} photo(s)</small></div><span>›</span></div>`).join("")}</div>`
-    : `<div class="empty">Aucune visite pour l'instant.<br>Appuyez sur « Nouvelle visite » chez le client.</div>`;
-  $("#app").innerHTML += `<div style="text-align:center;margin-top:24px"><button class="btn sec" id="impBtn">Importer une sauvegarde</button></div>`;
-  document.querySelectorAll(".item").forEach(e => e.onclick = () => openVisite(e.dataset.id));
-  $("#impBtn").onclick = () => $("#importFile").click();
-  $("#bar").innerHTML = `<button class="btn" id="newBtn">＋ Nouvelle visite</button>`;
-  $("#newBtn").onclick = async () => { const v = newVisite(); await DB.put(v); openVisite(v.id); };
+  $("#title").textContent = corbeille ? "Corbeille" : "Relevés brasseurs"; $("#menuBtn").classList.add("hidden");
+  $("#back").classList.toggle("hidden", !corbeille);
+  const all = (await DB.all()).sort((a, b) => (b.modifie || b.cree) - (a.modifie || a.cree));
+  const carte = v => `<div class="card item" data-id="${v.id}"><div class="t"><b>${esc(v.client || "Sans nom")}</b>${estTermine(v) ? `<span class="tag ter">Terminé</span>` : `<span class="tag enc">En cours</span>`}
+    <small>Visite du ${esc(v.date)} · ${esc(v.typeBat || "type ?")} · ${v.zones.length} zone(s) · ${v.zones.reduce((n, z) => n + z.photos.length, 0)} photo(s)</small>
+    <small>${v.supprime ? "Supprimé le " + dateFr(v.supprime) : estTermine(v) && v.termineLe ? "Terminé le " + dateFr(v.termineLe) : "Modifié le " + dateFr(v.modifie || v.cree)}</small></div><span>›</span></div>`;
+  let h = "";
+  if (!corbeille && /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone)
+    h += `<div class="alert"><b>Vous êtes dans Safari.</b> Sur iPhone, les relevés faits dans Safari et ceux faits depuis l'icône de l'écran d'accueil sont rangés séparément : un relevé commencé d'un côté n'apparaît pas de l'autre. Utilisez toujours l'icône de l'écran d'accueil.</div>`;
+  if (corbeille) {
+    const vs = all.filter(v => v.supprime);
+    h += vs.length ? `<p class="saved">Touchez un dossier pour le restaurer.</p><div class="list">${vs.map(carte).join("")}</div>` : `<div class="empty">La corbeille est vide.</div>`;
+  } else {
+    const vs = all.filter(v => !v.supprime), enc = vs.filter(v => !estTermine(v)), ter = vs.filter(estTermine);
+    if (!vs.length) h += `<div class="empty">Aucune visite pour l'instant.<br>Appuyez sur « Nouvelle visite » chez le client.</div>`;
+    else {
+      h += `<div class="sect">En cours (${enc.length})</div>` + (enc.length ? `<div class="list">${enc.map(carte).join("")}</div>` : `<div class="empty" style="padding:10px">Aucun dossier en cours.</div>`);
+      if (ter.length) h += `<div class="sect">Terminés (${ter.length})</div><div class="list">${ter.map(carte).join("")}</div>`;
+    }
+    const nbCorb = all.length - vs.length;
+    h += `<div style="text-align:center;margin-top:24px;display:flex;flex-direction:column;gap:10px;align-items:center">
+      ${vs.length ? `<button class="btn sec" id="expAll">💾 Sauvegarder tous les dossiers dans un fichier</button>` : ""}
+      <button class="btn sec" id="impBtn">Importer une sauvegarde</button>
+      ${nbCorb ? `<button class="btn del" id="corbBtn">🗑️ Corbeille (${nbCorb})</button>` : ""}</div>`;
+  }
+  $("#app").innerHTML = h;
+  document.querySelectorAll(".item").forEach(e => e.onclick = async () => {
+    if (!corbeille) return openVisite(e.dataset.id);
+    const v = all.find(x => x.id === e.dataset.id);
+    const c = prompt(`« ${v.client || "Sans nom"} »\n\n1 = Restaurer ce dossier\n2 = Le supprimer définitivement`, "1");
+    if (c === "1") { delete v.supprime; await DB.put(v); toast("Dossier restauré"); showList(true); }
+    if (c === "2" && confirm("Supprimer définitivement ? Il ne pourra plus être récupéré.")) { await DB.del(v.id); showList(true); }
+  });
+  if ($("#impBtn")) $("#impBtn").onclick = () => $("#importFile").click();
+  if ($("#corbBtn")) $("#corbBtn").onclick = () => showList(true);
+  if ($("#expAll")) $("#expAll").onclick = () => telecharger(all.filter(v => !v.supprime), `releves_sauvegarde_${today()}.json`);
+  $("#bar").innerHTML = corbeille ? "" : `<button class="btn" id="newBtn">＋ Nouvelle visite</button>`;
+  if (!corbeille) $("#newBtn").onclick = async () => { const v = newVisite(); v.modifie = Date.now(); await DB.put(v); openVisite(v.id); };
+}
+function telecharger(data, nom) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" }));
+  a.download = nom; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ---------- écran visite ----------
@@ -162,7 +210,7 @@ function renderVisite(openZone) {
   const v = cur;
   $("#title").textContent = v.client || "Nouvelle visite";
   const m = manquants(v);
-  $("#app").innerHTML = `
+  $("#app").innerHTML = `<div class="saved" id="saved">✓ Enregistré automatiquement sur le téléphone</div>
   <details class="card" open><summary>Client et site</summary>
     ${field(v, "client", "Client / raison sociale")}
     <div class="row">${field(v, "contact", "Contact")}${field(v, "tel", "Téléphone", "tel")}</div>
@@ -175,6 +223,9 @@ function renderVisite(openZone) {
   <button class="btn sec full" id="addZone">＋ Ajouter une zone</button>
   <div class="card">${area(v, "remarques", "Remarques générales", "Contexte, demande du client, délais…")}</div>
   <div class="card"><h2>Vérification</h2>${m.length ? `<div class="miss">À compléter :<br>• ${m.map(esc).join("<br>• ")}</div>` : `<div style="color:var(--ok)">✓ Dossier complet</div>`}</div>
+  <div class="card"><h2>Statut du dossier</h2>${estTermine(v)
+    ? `<p style="margin:0 0 10px">✓ <b>Terminé</b>${v.termineLe ? " le " + dateFr(v.termineLe) : ""}</p><button class="btn sec full" id="statutBtn">↺ Remettre en cours</button>`
+    : `<p style="margin:0 0 10px"><b>En cours</b></p><button class="btn sec full" id="statutBtn">✓ Marquer comme terminé</button>`}</div>
   <div style="text-align:center"><button class="btn del" id="delVisite">Supprimer cette visite</button></div>`;
   $("#bar").innerHTML = `<button class="btn" id="sendBtn">📤 Envoyer le dossier (PDF)</button>`;
   bindVisite();
@@ -243,12 +294,18 @@ function bindVisite() {
     const t = e.target.closest("button"); if (!t) return;
     if (t.id === "gpsBtn") return locate();
     if (t.id === "addZone") { const z = newZone(cur.zones.length + 1); cur.zones.push(z); await DB.put(cur); renderVisite(z.id); return; }
-    if (t.id === "delVisite") { if (confirm("Supprimer définitivement cette visite ?")) { await DB.del(cur.id); showList(); } return; }
+    if (t.id === "statutBtn") { setStatut(!estTermine(cur)); return; }
+    if (t.id === "delVisite") { if (confirm("Mettre cette visite à la corbeille ?\n(Vous pourrez la restaurer depuis la corbeille.)")) { cur.supprime = Date.now(); await DB.put(cur); showList(); } return; }
     if (t.dataset.delzone && confirm("Supprimer cette zone ?")) { cur.zones = cur.zones.filter(z => z.id !== t.dataset.delzone); await DB.put(cur); renderVisite(); }
     if (t.dataset.delphoto && confirm("Supprimer cette photo ?")) { const z = findObj(t.dataset.delphoto); z.photos.splice(+t.dataset.i, 1); await DB.put(cur); renderVisite(z.id); }
     if (t.dataset.clrsketch) { const z = findObj(t.dataset.clrsketch); z.croquis = ""; save(); initSketch(z); }
   };
   $("#sendBtn").onclick = envoyer;
+}
+async function setStatut(termine) {
+  cur.statut = termine ? "termine" : "en_cours";
+  if (termine) cur.termineLe = Date.now();
+  await saveNow(); renderVisite(); toast(termine ? "Dossier terminé" : "Dossier remis en cours");
 }
 function refreshCheck() {
   const m = manquants(cur), box = [...document.querySelectorAll(".card h2")].find(h => h.textContent === "Vérification");
@@ -364,7 +421,9 @@ async function envoyer() {
   const blob = doc.output("blob"), file = new File([blob], nom, { type: "application/pdf" });
   const texte = `Bonjour,\n\nVeuillez trouver ci-joint le relevé du site ${cur.client || ""} (${cur.adresse || ""}) pour l'étude aéraulique.\n\nCordialement`;
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: nom, text: texte }); return; }
+    try { await navigator.share({ files: [file], title: nom, text: texte });
+      if (!estTermine(cur) && confirm("Dossier envoyé. Le classer dans les dossiers terminés ?")) setStatut(true);
+      return; }
     catch (e) { if (e.name === "AbortError") return; }
   }
   // repli : téléchargement du PDF (ordinateur ou navigateur sans partage)
@@ -376,18 +435,25 @@ async function envoyer() {
 // ---------- menu : sauvegarde / dupliquer ----------
 $("#menuBtn").onclick = async () => {
   const c = prompt("1 = Exporter une sauvegarde de cette visite\n2 = Dupliquer cette visite\n3 = Aperçu du PDF", "3");
-  if (c === "1") { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(cur)], { type: "application/json" }));
-    a.download = `visite_${(cur.client || "client").replace(/[^\w-]+/g, "_")}_${cur.date}.json`; a.click(); }
-  if (c === "2") { const v = JSON.parse(JSON.stringify(cur)); v.id = uid(); v.cree = Date.now(); v.client += " (copie)"; await DB.put(v); openVisite(v.id); }
+  if (c === "1") telecharger(cur, `visite_${(cur.client || "client").replace(/[^\w-]+/g, "_")}_${cur.date}.json`);
+  if (c === "2") { const v = JSON.parse(JSON.stringify(cur)); v.id = uid(); v.cree = v.modifie = Date.now(); v.client += " (copie)"; v.statut = "en_cours"; delete v.termineLe; await DB.put(v); openVisite(v.id); }
   if (c === "3") { await DB.put(cur); window.open(URL.createObjectURL(buildPdf(cur).output("blob"))); }
 };
 $("#importFile").onchange = async e => {
-  try { const v = JSON.parse(await e.target.files[0].text()); if (!v.zones) throw 0; v.id = uid(); await DB.put(v); toast("Visite importée"); showList(); }
+  try {
+    // un fichier peut contenir une visite ou tous les dossiers ; on remplace un dossier déjà présent (même identifiant)
+    const d = JSON.parse(await e.target.files[0].text()), vs = Array.isArray(d) ? d : [d];
+    if (!vs.length || !vs.every(v => v && v.id && Array.isArray(v.zones))) throw 0;
+    for (const v of vs) await DB.put(v);
+    toast(vs.length + " dossier(s) importé(s)"); showList();
+  }
   catch { toast("Fichier invalide"); }
   e.target.value = "";
 };
-$("#back").onclick = async () => { if (cur) await DB.put(cur); showList(); };
+$("#back").onclick = async () => { if (cur) await saveNow(); showList(); };
+// iPhone : enregistrer dès que l'appli passe en arrière-plan (appel, autre appli, écran verrouillé)
 window.addEventListener("pagehide", () => cur && DB.put(cur));
+document.addEventListener("visibilitychange", () => { if (document.hidden && cur) saveNow(); });
 
 // ---------- démarrage ----------
 (async () => {
