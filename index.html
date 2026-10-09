@@ -91,7 +91,10 @@ const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOff
 const TYPES_BAT = ["", "Atelier / industrie", "Entrepôt / logistique", "Showroom / commerce", "Salle de sport / fitness", "Bâtiment agricole", "Bureaux / tertiaire", "ERP / salle polyvalente", "Restaurant", "Autre"];
 const TOITURES = ["", "Plate", "1 pan", "2 pans", "Shed", "Voûte / cintrée", "Faux plafond"];
 const STRUCTURES = ["", "Charpente métallique", "Charpente bois", "Béton / dalle", "Faux plafond", "Autre"];
-const OBJECTIFS = ["Confort d'été", "Déstratification hiver", "Évacuation humidité / séchage", "Bien-être animal", "Autre"];
+const OBJECTIFS = ["Grand volume", "Rafraîchissement hybride", "Évacuation humidité / séchage", "Bien-être animal", "Autre"];
+// anciens libellés renommés : les visites déjà saisies sont converties à l'ouverture
+const RENOMMES = { "Confort d'été": "Grand volume", "Déstratification hiver": "Rafraîchissement hybride" };
+const majObjectifs = v => v.zones.forEach(z => z.objectifs = (z.objectifs || []).map(o => RENOMMES[o] || o));
 const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérifier"];
 
 function newZone(n) { return { id: uid(), nom: "Zone " + n, longueur: "", largeur: "", hSousPlafond: "", hFaitage: "", hSabliere: "",
@@ -218,6 +221,7 @@ function telecharger(data, nom) {
 // ---------- écran visite ----------
 async function openVisite(id) {
   cur = (await DB.all()).find(v => v.id === id); if (!cur) return showList();
+  majObjectifs(cur);
   location.hash = id;
   $("#back").classList.remove("hidden"); $("#menuBtn").classList.remove("hidden");
   renderVisite();
