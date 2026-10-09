@@ -253,6 +253,13 @@ function renderVisite(openZone) {
   </details>
   ${v.zones.map((z, i) => zoneHtml(z, i, openZone === z.id || (openZone == null && i === v.zones.length - 1))).join("")}
   <button class="btn sec full" id="addZone">＋ Ajouter une zone</button>
+  <div class="card"><h2>Plans et pièces jointes</h2>
+    ${(v.pieces || []).length ? `<div class="photos">${v.pieces.map((pj, k) => `<div class="photo">${pj.type === "pdf"
+      ? `<div style="height:110px;display:flex;align-items:center;justify-content:center;font-size:40px">📄</div>` : `<img src="${pj.data}" alt="">`}
+      <input placeholder="Nom du plan" data-pj="${k}" value="${esc(pj.nom)}"><button class="btn del" data-delpj="${k}">Supprimer</button></div>`).join("")}</div>`
+      : `<p class="saved" style="text-align:left">Plans du bâtiment, schémas, documents du client… (photo ou PDF)</p>`}
+    <label class="btn sec full" style="margin-top:10px;color:var(--acc)">📎 Ajouter un plan ou un document<input type="file" accept="image/*,application/pdf,.pdf" multiple class="hidden" id="pjInput"></label>
+  </div>
   <div class="card">${area(v, "remarques", "Remarques générales", "Contexte, demande du client, délais…")}</div>
   <div class="card"><h2>Vérification</h2>${m.length ? `<div class="miss">À compléter :<br>• ${m.map(esc).join("<br>• ")}</div>` : `<div style="color:var(--ok)">✓ Dossier complet</div>`}</div>
   <div class="card"><h2>Statut du dossier</h2>${estTermine(v)
@@ -310,12 +317,22 @@ function bindVisite() {
       if (o === cur && t.dataset.k === "client") $("#title").textContent = t.value || "Nouvelle visite";
       if (o !== cur) { const c = $("#calc_" + o.id); if (c) c.innerHTML = calcTxt(calcZone(o));
         if (t.dataset.k === "nom") t.closest("details").querySelector("summary").textContent = t.value || "Zone"; }
+    } else if (t.dataset.pj) { cur.pieces[+t.dataset.pj].nom = t.value; save();
     } else if (t.dataset.cap) { findObj(t.dataset.cap).photos[+t.dataset.i].legende = t.value; save(); }
   };
   app.onchange = async e => {
     const t = e.target;
     if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck(); }
     if (t.dataset.obj) { const z = findObj(t.dataset.obj); z.objectifs = [...app.querySelectorAll(`[data-obj="${z.id}"]:checked`)].map(x => x.value); save(); }
+    if (t.id === "pjInput") {
+      cur.pieces = cur.pieces || []; toast("Ajout en cours…");
+      for (const f of t.files) {
+        const pdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name), nom = f.name.replace(/\.[^.]+$/, "");
+        try { cur.pieces.push(pdf ? { type: "pdf", nom, data: await lireFichier(f) } : { type: "image", nom, data: await compress(f, 2400, 0.85) }); }
+        catch { toast("Impossible de lire « " + f.name + " »"); }
+      }
+      await saveNow(); renderVisite(); toast(t.files.length + " document(s) ajouté(s)");
+    }
     if (t.dataset.photo) {
       const z = findObj(t.dataset.photo);
       for (const f of t.files) z.photos.push({ data: await compress(f), legende: "" });
@@ -330,6 +347,7 @@ function bindVisite() {
     if (t.id === "delVisite") { if (confirm("Mettre cette visite à la corbeille ?\n(Vous pourrez la restaurer depuis la corbeille.)")) { cur.supprime = Date.now(); await DB.put(cur); showList(); } return; }
     if (t.dataset.delzone && confirm("Supprimer cette zone ?")) { cur.zones = cur.zones.filter(z => z.id !== t.dataset.delzone); await DB.put(cur); renderVisite(); }
     if (t.dataset.delphoto && confirm("Supprimer cette photo ?")) { const z = findObj(t.dataset.delphoto); z.photos.splice(+t.dataset.i, 1); await DB.put(cur); renderVisite(z.id); }
+    if (t.dataset.delpj && confirm("Supprimer ce document ?")) { cur.pieces.splice(+t.dataset.delpj, 1); await saveNow(); renderVisite(); }
     if (t.dataset.clrsketch) { const z = findObj(t.dataset.clrsketch); z.croquis = ""; save(); initSketch(z); }
   };
   $("#sendBtn").onclick = envoyer;
@@ -354,18 +372,22 @@ function locate() {
 }
 
 // photos : réduites à 1600 px pour garder des PDF légers
-function compress(file) {
+function compress(file, max = 1600, q = 0.75) {
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
-      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const k = Math.min(1, max / Math.max(img.width, img.height));
       const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
-      res(c.toDataURL("image/jpeg", 0.75));
+      res(c.toDataURL("image/jpeg", q));
     };
     img.onerror = rej; img.src = url;
   });
 }
+
+function lireFichier(f) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); }); }
+const dataVersFichier = (data, nom, type) => { const b = atob(data.split(",")[1]), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return new File([u], nom, { type }); };
+const nomFichier = s => (s || "document").replace(/[^\w-]+/g, "_");
 
 // ---------- croquis ----------
 function initSketch(z) {
@@ -406,6 +428,9 @@ function contenu(v) {
         ["Températures", (z.tBas || z.tHaut) ? `sol ${z.tBas || "?"} °C · hauteur ${z.tHaut || "?"} °C` : ""]] },
       { titre: "Électricité", lignes: [["Alimentation", z.alim], ["Distance tableau", m(z.distTableau)], ["Remarques", z.remarques]] }] });
   });
+  const pj = v.pieces || [];
+  if (pj.length) pages.push({ titre: "Plans et pièces jointes", plans: pj.filter(x => x.type === "image"), sections: [{ lignes: [
+    ["Documents joints", pj.map(x => (x.nom || "Sans nom") + (x.type === "pdf" ? " (PDF joint à l'envoi)" : " (image ci-dessous)"))]] }] });
   const vide = x => x == null || x === "" || (Array.isArray(x) && !x.length);
   pages.forEach(p => p.sections.forEach(sec => sec.lignes = sec.lignes.filter(l => !vide(l[1])).map(([k, x]) => [k, Array.isArray(x) ? x.join(", ") : String(x)])));
   return { soustitre: "Pour étude aéraulique Turbobrise · visite du " + new Date(v.date).toLocaleDateString("fr-FR"), pages };
@@ -431,6 +456,11 @@ function buildPdf(v) {
     if (n) { doc.addPage(); y = M; }
     h1(p.titre);
     p.sections.forEach(sec => { if (sec.titre) h2(sec.titre); sec.lignes.forEach(([k, x]) => kv(k, x)); });
+    (p.plans || []).forEach(pl => {
+      const pr = doc.getImageProperties(pl.data); let w = CW, h = w * pr.height / pr.width;
+      if (h > 297 - 2 * M - 12) { h = 297 - 2 * M - 12; w = h * pr.width / pr.height; }
+      doc.addPage(); y = M; h2(pl.nom || "Plan"); doc.addImage(pl.data, "JPEG", M, y, w, h); y += h + 4;
+    });
     if (p.croquis) { h2("Croquis"); need(85); doc.addImage(p.croquis, "PNG", M, y, CW, 80); y += 84; }
     if (p.photos && p.photos.length) {
       h2("Photos"); const pw = (CW - 6) / 2;
@@ -458,6 +488,7 @@ function apercu() {
       <h1>Relevé de site – brasseurs d'air</h1><p class="ap-sub">${esc(c.soustitre)}</p>
       ${c.pages.map(p => `<section><h2>${esc(p.titre)}</h2>
         ${p.sections.map(sec => (sec.titre ? `<h3>${esc(sec.titre)}</h3>` : "") + sec.lignes.map(([k, x]) => `<div class="ap-kv"><b>${esc(k)}</b><span>${esc(x)}</span></div>`).join("")).join("")}
+        ${(p.plans || []).map(pl => `<h3>${esc(pl.nom || "Plan")}</h3><img src="${pl.data}" class="ap-croquis" alt="">`).join("")}
         ${p.croquis ? `<h3>Croquis</h3><img src="${p.croquis}" class="ap-croquis" alt="">` : ""}
         ${p.photos && p.photos.length ? `<h3>Photos</h3><div class="ap-photos">${p.photos.map(ph => `<figure><img src="${ph.data}" alt="">${ph.legende ? `<figcaption>${esc(ph.legende)}</figcaption>` : ""}</figure>`).join("")}</div>` : ""}
       </section>`).join("")}
@@ -475,16 +506,18 @@ async function envoyer() {
   const nom = `Releve_${(cur.client || "client").replace(/[^\w-]+/g, "_")}_${cur.date}.pdf`;
   const blob = doc.output("blob"), file = new File([blob], nom, { type: "application/pdf" });
   const texte = `Bonjour,\n\nVeuillez trouver ci-joint le relevé du site ${cur.client || ""} (${cur.adresse || ""}) pour l'étude aéraulique.\n\nCordialement`;
-  if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: nom, text: texte });
+  // les PDF joints (plans) partent avec le relevé
+  const joints = (cur.pieces || []).filter(x => x.type === "pdf").map(x => dataVersFichier(x.data, nomFichier(x.nom) + ".pdf", "application/pdf"));
+  const fichiers = [file, ...joints];
+  if (navigator.canShare && navigator.canShare({ files: fichiers })) {
+    try { await navigator.share({ files: fichiers, title: nom, text: texte });
       if (!estTermine(cur) && confirm("Dossier envoyé. Le classer dans les dossiers terminés ?")) setStatut(true);
       return; }
     catch (e) { if (e.name === "AbortError") return; }
   }
   // repli : téléchargement du PDF (ordinateur ou navigateur sans partage)
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast("PDF téléchargé : joignez-le à votre mail ou WhatsApp");
+  for (const f of fichiers) { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
+  toast(fichiers.length > 1 ? "PDF et plans téléchargés : joignez-les à votre mail ou WhatsApp" : "PDF téléchargé : joignez-le à votre mail ou WhatsApp");
 }
 
 // ---------- menu : sauvegarde / dupliquer ----------
