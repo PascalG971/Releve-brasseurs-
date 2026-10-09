@@ -83,7 +83,8 @@ const DB = {
 
 // ---------- modèle ----------
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-const today = () => new Date().toISOString().slice(0, 10);
+// date du téléphone (et non UTC : le soir aux Antilles, UTC est déjà le lendemain)
+const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const TYPES_BAT = ["", "Atelier / industrie", "Entrepôt / logistique", "Showroom / commerce", "Salle de sport / fitness", "Bâtiment agricole", "Bureaux / tertiaire", "ERP / salle polyvalente", "Restaurant", "Autre"];
 const TOITURES = ["", "Plate", "1 pan", "2 pans", "Shed", "Voûte / cintrée", "Faux plafond"];
 const STRUCTURES = ["", "Charpente métallique", "Charpente bois", "Béton / dalle", "Faux plafond", "Autre"];
