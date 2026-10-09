@@ -36,6 +36,7 @@ textarea{min-height:70px;resize:vertical}
 .list .item{display:flex;gap:10px;align-items:center;cursor:pointer}
 .list .item .t{flex:1}
 .list .item small{color:var(--mute);display:block}
+.list .item .poub{background:transparent;border:0;font-size:22px;padding:8px;cursor:pointer}
 .calc{background:var(--acc2);border-radius:8px;padding:8px 10px;margin-top:10px;font-size:14px}
 .photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px}
 .photo{border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg)}
@@ -161,13 +162,14 @@ async function showList(corbeille) {
   const all = (await DB.all()).sort((a, b) => (b.modifie || b.cree) - (a.modifie || a.cree));
   const carte = v => `<div class="card item" data-id="${v.id}"><div class="t"><b>${esc(v.client || "Sans nom")}</b>${estTermine(v) ? `<span class="tag ter">Terminé</span>` : `<span class="tag enc">En cours</span>`}
     <small>Visite du ${esc(v.date)} · ${esc(v.typeBat || "type ?")} · ${v.zones.length} zone(s) · ${v.zones.reduce((n, z) => n + z.photos.length, 0)} photo(s)</small>
-    <small>${v.supprime ? "Supprimé le " + dateFr(v.supprime) : estTermine(v) && v.termineLe ? "Terminé le " + dateFr(v.termineLe) : "Modifié le " + dateFr(v.modifie || v.cree)}</small></div><span>›</span></div>`;
+    <small>${v.supprime ? "Supprimé le " + dateFr(v.supprime) : estTermine(v) && v.termineLe ? "Terminé le " + dateFr(v.termineLe) : "Modifié le " + dateFr(v.modifie || v.cree)}</small></div>${v.supprime ? "" : `<button class="poub" data-poub="${v.id}" aria-label="Mettre à la corbeille">🗑️</button>`}<span>›</span></div>`;
   let h = "";
   if (!corbeille && /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone)
     h += `<div class="alert"><b>Vous êtes dans Safari.</b> Sur iPhone, les relevés faits dans Safari et ceux faits depuis l'icône de l'écran d'accueil sont rangés séparément : un relevé commencé d'un côté n'apparaît pas de l'autre. Utilisez toujours l'icône de l'écran d'accueil.</div>`;
   if (corbeille) {
     const vs = all.filter(v => v.supprime);
-    h += vs.length ? `<p class="saved">Touchez un dossier pour le restaurer.</p><div class="list">${vs.map(carte).join("")}</div>` : `<div class="empty">La corbeille est vide.</div>`;
+    h += vs.length ? `<p class="saved">Touchez un dossier pour le restaurer.</p><div class="list">${vs.map(carte).join("")}</div>
+      <div style="text-align:center;margin-top:20px"><button class="btn del" id="viderBtn">Vider la corbeille</button></div>` : `<div class="empty">La corbeille est vide.</div>`;
   } else {
     const vs = all.filter(v => !v.supprime), enc = vs.filter(v => !estTermine(v)), ter = vs.filter(estTermine);
     if (!vs.length) h += `<div class="empty">Aucune visite pour l'instant.<br>Appuyez sur « Nouvelle visite » chez le client.</div>`;
@@ -182,6 +184,17 @@ async function showList(corbeille) {
       ${nbCorb ? `<button class="btn del" id="corbBtn">🗑️ Corbeille (${nbCorb})</button>` : ""}</div>`;
   }
   $("#app").innerHTML = h;
+  document.querySelectorAll(".poub").forEach(b => b.onclick = async ev => {
+    ev.stopPropagation();
+    const v = all.find(x => x.id === b.dataset.poub);
+    if (!confirm(`Mettre « ${v.client || "Sans nom"} » à la corbeille ?`)) return;
+    v.supprime = Date.now(); await DB.put(v); toast("Dossier mis à la corbeille"); showList();
+  });
+  if ($("#viderBtn")) $("#viderBtn").onclick = async () => {
+    if (!confirm("Supprimer définitivement tous les dossiers de la corbeille ? Ils ne pourront plus être récupérés.")) return;
+    for (const v of all.filter(x => x.supprime)) await DB.del(v.id);
+    showList(true);
+  };
   document.querySelectorAll(".item").forEach(e => e.onclick = async () => {
     if (!corbeille) return openVisite(e.dataset.id);
     const v = all.find(x => x.id === e.dataset.id);
