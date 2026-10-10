@@ -373,7 +373,9 @@ function locate() {
   navigator.geolocation.getCurrentPosition(p => {
     cur.gps = p.coords.latitude.toFixed(5) + ", " + p.coords.longitude.toFixed(5);
     $("#" + cur.id + "_gps").value = cur.gps; save(); toast("Position enregistrée");
-  }, () => toast("Position non disponible"), { enableHighAccuracy: true, timeout: 15000 });
+  }, err => err.code === 1
+    ? alert("L'iPhone refuse la localisation à l'appli.\n\nPour l'autoriser : Réglages › Confidentialité et sécurité › Service de localisation › Sites Safari › « Lorsque l'app est active ».\n\nPuis fermez et rouvrez l'appli Relevés.")
+    : toast("Position introuvable pour l'instant : réessayez à l'extérieur"), { enableHighAccuracy: true, timeout: 20000 });
 }
 
 // lien vers une appli de cartes : position GPS en priorité, sinon l'adresse
