@@ -53,6 +53,7 @@ textarea{min-height:70px;resize:vertical}
 .toast.show{opacity:1}
 canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none;display:block}
 .hidden{display:none}
+.cartes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.cartes .btn{padding:10px 6px;font-size:14px;text-decoration:none}
 .apercu{position:fixed;inset:0;z-index:20;background:#e9edf2;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .apercu.hidden{display:none}
 .ap-top{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--acc);color:#fff;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
@@ -249,6 +250,8 @@ function renderVisite(openZone) {
     ${field(v, "email", "E-mail", "email")}
     ${field(v, "adresse", "Adresse du site")}
     <div class="row">${field(v, "gps", "Position GPS")}<div><label>&nbsp;</label><button class="btn sec full" id="gpsBtn">📍 Localiser</button></div></div>
+    <label>Ouvrir le site dans une carte</label>
+    <div class="cartes"><a class="btn sec" data-carte="google" target="_blank" rel="noopener">Google Maps</a><a class="btn sec" data-carte="apple" target="_blank" rel="noopener">Plans</a><a class="btn sec" data-carte="waze" target="_blank" rel="noopener">Waze</a></div>
     <div class="row">${select(v, "typeBat", "Type de bâtiment", TYPES_BAT)}${field(v, "date", "Date de visite", "date")}</div>
   </details>
   ${v.zones.map((z, i) => zoneHtml(z, i, openZone === z.id || (openZone == null && i === v.zones.length - 1))).join("")}
@@ -340,6 +343,8 @@ function bindVisite() {
     }
   };
   app.onclick = async e => {
+    const carte = e.target.closest("[data-carte]");
+    if (carte) { const u = urlCarte(carte.dataset.carte); if (!u) { e.preventDefault(); toast("Saisissez l'adresse ou touchez « Localiser » d'abord"); } else carte.href = u; return; }
     const t = e.target.closest("button"); if (!t) return;
     if (t.id === "gpsBtn") return locate();
     if (t.id === "addZone") { const z = newZone(cur.zones.length + 1); cur.zones.push(z); await DB.put(cur); renderVisite(z.id); return; }
@@ -369,6 +374,15 @@ function locate() {
     cur.gps = p.coords.latitude.toFixed(5) + ", " + p.coords.longitude.toFixed(5);
     $("#" + cur.id + "_gps").value = cur.gps; save(); toast("Position enregistrée");
   }, () => toast("Position non disponible"), { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// lien vers une appli de cartes : position GPS en priorité, sinon l'adresse
+function urlCarte(app) {
+  const gps = (cur.gps || "").match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/), ll = gps && gps[1] + "," + gps[2];
+  const q = encodeURIComponent(ll || cur.adresse || ""); if (!ll && !cur.adresse) return "";
+  if (app === "google") return "https://www.google.com/maps/search/?api=1&query=" + q;
+  if (app === "apple") return "https://maps.apple.com/?" + (ll ? "ll=" + ll + "&q=" + encodeURIComponent(cur.client || "Site") : "q=" + q);
+  return "https://waze.com/ul?" + (ll ? "ll=" + ll : "q=" + q) + "&navigate=yes";
 }
 
 // photos : réduites à 1600 px pour garder des PDF légers
