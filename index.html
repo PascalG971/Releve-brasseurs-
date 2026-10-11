@@ -53,6 +53,7 @@ textarea{min-height:70px;resize:vertical}
 .toast.show{opacity:1}
 canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--line);border-radius:8px;touch-action:none;display:block}
 .hidden{display:none}
+.contact2{border-top:1px solid #dde3ea;margin-top:12px;padding-top:8px}
 .cartes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.cartes .btn{padding:10px 6px;font-size:14px;text-decoration:none}
 .apercu{position:fixed;inset:0;z-index:20;background:#e9edf2;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .apercu.hidden{display:none}
@@ -172,7 +173,7 @@ function select(obj, key, lbl, opts) {
   const id = obj.id + "_" + key;
   return `<div><label for="${id}">${lbl}</label><select id="${id}" data-o="${obj.id}" data-k="${key}">${opts.map(o => `<option ${o === obj[key] ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
 }
-function findObj(id) { return cur.id === id ? cur : cur.zones.find(z => z.id === id); }
+function findObj(id) { return cur.id === id ? cur : cur.zones.find(z => z.id === id) || (cur.contacts || []).find(c => c.id === id); }
 
 // ---------- écran liste ----------
 async function showList(corbeille) {
@@ -251,6 +252,10 @@ function renderVisite(openZone) {
     ${field(v, "client", "Raison sociale")}
     <div class="row">${field(v, "contact", "Contact")}${field(v, "tel", "Téléphone", "tel")}</div>
     ${field(v, "email", "E-mail", "email")}
+    ${(v.contacts || []).map((c, k) => `<div class="contact2"><b>Contact ${k + 2}</b>
+      <div class="row">${field(c, "contact", "Nom")}${field(c, "tel", "Téléphone", "tel")}</div>
+      ${field(c, "email", "E-mail", "email")}<button class="btn del" data-delct="${c.id}">Supprimer ce contact</button></div>`).join("")}
+    <button class="btn sec full" id="addContact">＋ Ajouter un contact</button>
     ${field(v, "adresse", "Adresse du site")}
     <div class="row">${field(v, "gps", "Position GPS")}<div><label>&nbsp;</label><button class="btn sec full" id="gpsBtn">📍 Localiser</button></div></div>
     <label>Ouvrir le site dans une carte</label>
@@ -351,6 +356,8 @@ function bindVisite() {
     if (carte) { const u = urlCarte(carte.dataset.carte); if (!u) { e.preventDefault(); toast("Saisissez l'adresse ou touchez « Localiser » d'abord"); } else carte.href = u; return; }
     const t = e.target.closest("button"); if (!t) return;
     if (t.id === "gpsBtn") return locate();
+    if (t.id === "addContact") { (cur.contacts = cur.contacts || []).push({ id: uid(), contact: "", tel: "", email: "" }); await DB.put(cur); renderVisite(); return; }
+    if (t.dataset.delct) { if (!confirm("Supprimer ce contact ?")) return; cur.contacts = cur.contacts.filter(c => c.id !== t.dataset.delct); await DB.put(cur); renderVisite(); return; }
     if (t.id === "addZone") { const z = newZone(cur.zones.length + 1); cur.zones.push(z); await DB.put(cur); renderVisite(z.id); return; }
     if (t.id === "statutBtn") { setStatut(!estTermine(cur)); return; }
     if (t.id === "delVisite") { if (confirm("Mettre cette visite à la corbeille ?\n(Vous pourrez la restaurer depuis la corbeille.)")) { cur.supprime = Date.now(); await DB.put(cur); showList(); } return; }
@@ -434,6 +441,7 @@ function contenu(v) {
   const m = x => (num(x) == null ? "" : fmt(num(x), 2) + " m");
   const tot = v.zones.reduce((a, z) => { const c = calcZone(z); a.s += c.surface || 0; a.v += c.volume || 0; return a; }, { s: 0, v: 0 });
   const pages = [{ titre: "Client et site", sections: [{ lignes: [["Client", typeClientTxt(v)], ["Raison sociale", v.client], ["Contact", v.contact], ["Téléphone", v.tel], ["E-mail", v.email],
+    ...(v.contacts || []).flatMap((c, k) => [["Contact " + (k + 2), c.contact], ["Téléphone", c.tel], ["E-mail", c.email]]),
     ["Adresse", v.adresse], ["GPS", v.gps], ["Type de bâtiment", v.typeBat], ["Remarques", v.remarques],
     ["Total", `${v.zones.length} zone(s) · ${fmt(tot.s)} m² · ${fmt(tot.v, 0)} m³`]] }] }];
   v.zones.forEach(z => {
