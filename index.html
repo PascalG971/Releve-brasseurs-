@@ -101,6 +101,8 @@ const DB = {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 // date du téléphone (et non UTC : le soir aux Antilles, UTC est déjà le lendemain)
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const TYPES_CLIENT = ["", "Client utilisateur", "Bureau d'étude", "Installateur", "Autre"];
+const typeClientTxt = v => v.typeClient === "Autre" ? (v.typeClientAutre ? "Autre : " + v.typeClientAutre : "Autre") : v.typeClient || "";
 const TYPES_BAT = ["", "Atelier / industrie", "Entrepôt / logistique", "Showroom / commerce", "Salle de sport / fitness", "Bâtiment agricole", "Bureaux / tertiaire", "ERP / salle polyvalente", "Restaurant", "Autre"];
 const TOITURES = ["", "Plate", "1 pan", "2 pans", "Shed", "Voûte / cintrée", "Faux plafond"];
 const STRUCTURES = ["", "Charpente métallique", "Charpente bois", "Béton / dalle", "Faux plafond", "Autre"];
@@ -113,7 +115,7 @@ const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérif
 function newZone(n) { return { id: uid(), nom: "Zone " + n, longueur: "", largeur: "", hSousPlafond: "", hFaitage: "", hSabliere: "",
   toiture: "", structure: "", entraxe: "", hLibre: "", contraintesHauteur: "", obstacles: "", ouvertures: "", ventilExistante: "",
   activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
-function newVisite() { return { id: uid(), cree: Date.now(), date: today(), client: "", contact: "", tel: "", email: "", adresse: "", gps: "",
+function newVisite() { return { id: uid(), cree: Date.now(), date: today(), typeClient: "", typeClientAutre: "", client: "", contact: "", tel: "", email: "", adresse: "", gps: "",
   typeBat: "", remarques: "", statut: "en_cours", zones: [newZone(1)] }; }
 const estTermine = v => v.statut === "termine";
 const dateFr = t => new Date(t).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" });
@@ -130,7 +132,7 @@ function calcZone(z) {
 }
 function manquants(v) {
   const m = [];
-  if (!v.client) m.push("client");
+  if (!v.client) m.push("raison sociale");
   if (!v.adresse) m.push("adresse");
   v.zones.forEach(z => {
     const r = [];
@@ -179,7 +181,7 @@ async function showList(corbeille) {
   $("#back").classList.toggle("hidden", !corbeille);
   const all = (await DB.all()).sort((a, b) => (b.modifie || b.cree) - (a.modifie || a.cree));
   const carte = v => `<div class="card item" data-id="${v.id}"><div class="t"><b>${esc(v.client || "Sans nom")}</b>${estTermine(v) ? `<span class="tag ter">Terminé</span>` : `<span class="tag enc">En cours</span>`}
-    <small>Visite du ${esc(v.date)} · ${esc(v.typeBat || "type ?")} · ${v.zones.length} zone(s) · ${v.zones.reduce((n, z) => n + z.photos.length, 0)} photo(s)</small>
+    <small>${v.typeClient ? esc(typeClientTxt(v)) + " · " : ""}Visite du ${esc(v.date)} · ${esc(v.typeBat || "type ?")} · ${v.zones.length} zone(s) · ${v.zones.reduce((n, z) => n + z.photos.length, 0)} photo(s)</small>
     <small>${v.supprime ? "Supprimé le " + dateFr(v.supprime) : estTermine(v) && v.termineLe ? "Terminé le " + dateFr(v.termineLe) : "Modifié le " + dateFr(v.modifie || v.cree)}</small></div>${v.supprime ? "" : `<button class="poub" data-poub="${v.id}" aria-label="Mettre à la corbeille">🗑️</button>`}<span>›</span></div>`;
   let h = "";
   if (!corbeille && /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone)
@@ -245,7 +247,8 @@ function renderVisite(openZone) {
   const m = manquants(v);
   $("#app").innerHTML = `<div class="saved" id="saved">✓ Enregistré automatiquement sur le téléphone</div>
   <details class="card" open><summary>Client et site</summary>
-    ${field(v, "client", "Client / raison sociale")}
+    <div class="row">${select(v, "typeClient", "Client", TYPES_CLIENT)}<div id="autreBox"${v.typeClient === "Autre" ? "" : ' class="hidden"'}>${field(v, "typeClientAutre", "Précisez")}</div></div>
+    ${field(v, "client", "Raison sociale")}
     <div class="row">${field(v, "contact", "Contact")}${field(v, "tel", "Téléphone", "tel")}</div>
     ${field(v, "email", "E-mail", "email")}
     ${field(v, "adresse", "Adresse du site")}
@@ -325,7 +328,8 @@ function bindVisite() {
   };
   app.onchange = async e => {
     const t = e.target;
-    if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck(); }
+    if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck();
+      if (t.dataset.k === "typeClient") $("#autreBox").classList.toggle("hidden", t.value !== "Autre"); }
     if (t.dataset.obj) { const z = findObj(t.dataset.obj); z.objectifs = [...app.querySelectorAll(`[data-obj="${z.id}"]:checked`)].map(x => x.value); save(); }
     if (t.id === "pjInput") {
       cur.pieces = cur.pieces || []; toast("Ajout en cours…");
@@ -429,7 +433,7 @@ function initSketch(z) {
 function contenu(v) {
   const m = x => (num(x) == null ? "" : fmt(num(x), 2) + " m");
   const tot = v.zones.reduce((a, z) => { const c = calcZone(z); a.s += c.surface || 0; a.v += c.volume || 0; return a; }, { s: 0, v: 0 });
-  const pages = [{ titre: "Client et site", sections: [{ lignes: [["Client", v.client], ["Contact", v.contact], ["Téléphone", v.tel], ["E-mail", v.email],
+  const pages = [{ titre: "Client et site", sections: [{ lignes: [["Client", typeClientTxt(v)], ["Raison sociale", v.client], ["Contact", v.contact], ["Téléphone", v.tel], ["E-mail", v.email],
     ["Adresse", v.adresse], ["GPS", v.gps], ["Type de bâtiment", v.typeBat], ["Remarques", v.remarques],
     ["Total", `${v.zones.length} zone(s) · ${fmt(tot.s)} m² · ${fmt(tot.v, 0)} m³`]] }] }];
   v.zones.forEach(z => {
