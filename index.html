@@ -64,6 +64,7 @@ canvas.sketch{width:100%;height:260px;background:#fff;border:1px solid var(--lin
 .ap-doc section{border-top:2px solid #0b5cab;margin-top:18px;padding-top:6px}
 .ap-doc h2{color:#0b5cab;font-size:17px;margin:4px 0 8px}.ap-doc h3{font-size:14px;margin:12px 0 4px}
 .ap-kv{display:grid;grid-template-columns:40% 1fr;gap:8px;font-size:14px;padding:2px 0}.ap-kv span{white-space:pre-wrap}
+.ap-res{background:#eef4fb;border-radius:8px;padding:8px 10px;font-size:14px;margin-bottom:6px}
 .ap-croquis{width:100%;border:1px solid #ccc}
 .ap-photos{display:grid;grid-template-columns:1fr 1fr;gap:8px}.ap-photos figure{margin:0}.ap-photos img{width:100%;display:block}.ap-photos figcaption{font-size:12px}
 .sect{font-size:14px;font-weight:600;color:var(--mute);text-transform:uppercase;letter-spacing:.03em;margin:22px 0 4px}
@@ -509,19 +510,23 @@ function buildPdf(v) {
 
 // Aperçu : le contenu du PDF affiché dans l'appli, sans rien envoyer ni classer
 function apercu() {
-  const c = contenu(cur), m = manquants(cur);
+  const c = contenu(cur), m = manquants(cur), pj = cur.pieces || [], pdfs = pj.filter(x => x.type === "pdf");
+  const nbPhotos = cur.zones.reduce((n, z) => n + z.photos.length, 0);
   $("#apercu").innerHTML = `<div class="ap-top"><b>Aperçu du dossier</b><button class="btn" id="apClose">Fermer</button></div>
     <div class="ap-doc">
       ${m.length ? `<div class="miss" style="margin-bottom:12px">À compléter :<br>• ${m.map(esc).join("<br>• ")}</div>` : ""}
       <h1>Relevé de site – brasseurs d'air</h1><p class="ap-sub">${esc(c.soustitre)}</p>
+      <div class="ap-res">📷 ${nbPhotos} photo(s) · 🗺️ ${pj.filter(x => x.type === "image").length} plan(s) en image · 📄 ${pdfs.length} PDF joint(s)<br><small>Les photos sont à la fin de chaque zone, les plans tout en bas.</small></div>
       ${c.pages.map(p => `<section><h2>${esc(p.titre)}</h2>
         ${p.sections.map(sec => (sec.titre ? `<h3>${esc(sec.titre)}</h3>` : "") + sec.lignes.map(([k, x]) => `<div class="ap-kv"><b>${esc(k)}</b><span>${esc(x)}</span></div>`).join("")).join("")}
+        ${p.plans && pdfs.length ? `<h3>PDF joints</h3>${pdfs.map((x, k) => `<button class="btn sec full" data-appdf="${k}" style="margin:4px 0">📄 Ouvrir « ${esc(x.nom || "Document")} »</button>`).join("")}` : ""}
         ${(p.plans || []).map(pl => `<h3>${esc(pl.nom || "Plan")}</h3><img src="${pl.data}" class="ap-croquis" alt="">`).join("")}
         ${p.croquis ? `<h3>Croquis</h3><img src="${p.croquis}" class="ap-croquis" alt="">` : ""}
         ${p.photos && p.photos.length ? `<h3>Photos</h3><div class="ap-photos">${p.photos.map(ph => `<figure><img src="${ph.data}" alt="">${ph.legende ? `<figcaption>${esc(ph.legende)}</figcaption>` : ""}</figure>`).join("")}</div>` : ""}
       </section>`).join("")}
     </div>`;
   $("#apercu").classList.remove("hidden"); document.body.style.overflow = "hidden";
+  $("#apercu").querySelectorAll("[data-appdf]").forEach(bt => bt.onclick = () => window.open(URL.createObjectURL(dataVersFichier(pdfs[+bt.dataset.appdf].data, "plan.pdf", "application/pdf")), "_blank"));
   $("#apClose").onclick = () => { $("#apercu").classList.add("hidden"); document.body.style.overflow = ""; };
 }
 
