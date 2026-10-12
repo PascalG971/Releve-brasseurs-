@@ -112,11 +112,13 @@ const OBJECTIFS = ["Grand volume", "Rafraîchissement hybride", "Évacuation hum
 // anciens libellés renommés : les visites déjà saisies sont converties à l'ouverture
 const RENOMMES = { "Confort d'été": "Grand volume", "Déstratification hiver": "Rafraîchissement hybride" };
 const majObjectifs = v => v.zones.forEach(z => z.objectifs = (z.objectifs || []).map(o => RENOMMES[o] || o));
+const TYPES_BRASSEUR = ["", "ERP-C", "ERP", "DIR", "MOB", "FLO"];
+const POSITIONS = ["", "Centrale", "Faîtage", "Rampant", "Autre"];
 const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérifier"];
 
 function newZone(n) { return { id: uid(), nom: "Zone " + n, longueur: "", largeur: "", hSousPlafond: "", hFaitage: "", hSabliere: "",
   toiture: "", structure: "", entraxe: "", hLibre: "", contraintesHauteur: "", obstacles: "", ouvertures: "", ventilExistante: "",
-  activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
+  activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", typeBrasseur: "", diametre: "", position: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
 function newVisite() { return { id: uid(), cree: Date.now(), date: today(), typeClient: "", typeClientAutre: "", client: "", contact: "", tel: "", email: "", adresse: "", gps: "",
   typeBat: "", remarques: "", statut: "en_cours", zones: [newZone(1)] }; }
 const estTermine = v => v.statut === "termine";
@@ -305,6 +307,9 @@ function zoneHtml(z, i, open) {
     <div>${OBJECTIFS.map(o => `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 14px 4px 0;color:var(--ink);font-size:15px"><input type="checkbox" style="width:auto" data-obj="${z.id}" value="${esc(o)}" ${z.objectifs.includes(o) ? "checked" : ""}>${esc(o)}</label>`).join("")}</div>
     ${area(z, "contraintes", "Contraintes particulières", "Poussière, humidité, bruit, ATEX, hygiène…")}
     <div class="row">${field(z, "tBas", "T° au sol (°C)", "text", 'inputmode="decimal"')}${field(z, "tHaut", "T° en hauteur (°C)", "text", 'inputmode="decimal"')}</div>
+    <h2 style="margin-top:14px">Brasseurs</h2>
+    <div class="row">${select(z, "typeBrasseur", "Type de brasseur", TYPES_BRASSEUR)}${field(z, "diametre", "Diamètre", "text", 'placeholder="selon le modèle"')}</div>
+    ${select(z, "position", "Positionnement", POSITIONS)}
     <h2 style="margin-top:14px">Électricité</h2>
     <div class="row">${select(z, "alim", "Alimentation", ALIMS)}${mfield(z, "distTableau", "Distance au tableau (m)")}</div>
     <h2 style="margin-top:14px">Photos</h2>
@@ -455,6 +460,7 @@ function contenu(v) {
       { titre: "Obstacles et ouvertures", lignes: [["Obstacles au sol", z.obstacles], ["Ouvertures", z.ouvertures], ["Ventilation existante", z.ventilExistante]] },
       { titre: "Usage", lignes: [["Activité", z.activite], ["Personnes", z.personnes], ["Objectifs", z.objectifs], ["Contraintes", z.contraintes],
         ["Températures", (z.tBas || z.tHaut) ? `sol ${z.tBas || "?"} °C · hauteur ${z.tHaut || "?"} °C` : ""]] },
+      { titre: "Brasseurs", lignes: [["Type de brasseur", z.typeBrasseur], ["Diamètre", z.diametre], ["Positionnement", z.position]] },
       { titre: "Électricité", lignes: [["Alimentation", z.alim], ["Distance tableau", m(z.distTableau)], ["Remarques", z.remarques]] }] });
   });
   const pj = v.pieces || [];
