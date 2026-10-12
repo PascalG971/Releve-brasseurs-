@@ -116,7 +116,8 @@ const TYPES_BRASSEUR = ["", "ERP-C", "ERP", "DIR", "MOB", "FLO"];
 // Diamètres d'après les fiches techniques Turbobrise
 const DIAMETRES = { "ERP-C": ["2,4 m", "3,0 m", "4,3 m", "4,9 m", "5,5 m", "6,1 m", "7,3 m"], "ERP": ["1,32 m", "1,60 m"],
   "DIR": ["0,60 m", "0,90 m", "Sur demande"], "MOB": ["1,50 m", "2,00 m"], "FLO": ["3,0 m", "4,0 m"] };
-const optsDiametre = z => { const l = ["", ...(DIAMETRES[z.typeBrasseur] || [])]; return z.diametre && !l.includes(z.diametre) ? [...l, z.diametre] : l; };
+// sans type choisi, le menu propose tous les diamètres sous la forme « TYPE – diamètre »
+const optsDiametre = z => { const l = ["", ...(DIAMETRES[z.typeBrasseur] || Object.entries(DIAMETRES).flatMap(([t, ds]) => ds.map(d => t + " – " + d)))]; return z.diametre && !l.includes(z.diametre) ? [...l, z.diametre] : l; };
 const POSITIONS = ["", "Centrale", "Faîtage", "Rampant", "Autre"];
 const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérifier"];
 
@@ -344,6 +345,9 @@ function bindVisite() {
   app.onchange = async e => {
     const t = e.target;
     if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck();
+      if (t.dataset.k === "diametre" && t.value.includes(" – ")) { const z = findObj(t.dataset.o), [ty, d] = t.value.split(" – ");
+        z.typeBrasseur = ty; $("#" + z.id + "_typeBrasseur").value = ty; z.diametre = d; save();
+        t.innerHTML = optsDiametre(z).map(o => `<option ${o === d ? "selected" : ""}>${esc(o)}</option>`).join(""); }
       if (t.dataset.k === "typeBrasseur") { const z = findObj(t.dataset.o), d = $("#" + z.id + "_diametre");
         z.diametre = (DIAMETRES[z.typeBrasseur] || []).includes(z.diametre) ? z.diametre : ""; save();
         d.innerHTML = optsDiametre(z).map(o => `<option ${o === z.diametre ? "selected" : ""}>${esc(o)}</option>`).join(""); }
