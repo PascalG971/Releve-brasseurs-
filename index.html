@@ -113,6 +113,10 @@ const OBJECTIFS = ["Grand volume", "Rafraîchissement hybride", "Évacuation hum
 const RENOMMES = { "Confort d'été": "Grand volume", "Déstratification hiver": "Rafraîchissement hybride" };
 const majObjectifs = v => v.zones.forEach(z => z.objectifs = (z.objectifs || []).map(o => RENOMMES[o] || o));
 const TYPES_BRASSEUR = ["", "ERP-C", "ERP", "DIR", "MOB", "FLO"];
+// Diamètres d'après les fiches techniques Turbobrise
+const DIAMETRES = { "ERP-C": ["2,4 m", "3,0 m", "4,3 m", "4,9 m", "5,5 m", "6,1 m", "7,3 m"], "ERP": ["1,32 m", "1,60 m"],
+  "DIR": ["0,60 m", "0,90 m", "Sur demande"], "MOB": ["1,50 m", "2,00 m"], "FLO": ["3,0 m", "4,0 m"] };
+const optsDiametre = z => { const l = ["", ...(DIAMETRES[z.typeBrasseur] || [])]; return z.diametre && !l.includes(z.diametre) ? [...l, z.diametre] : l; };
 const POSITIONS = ["", "Centrale", "Faîtage", "Rampant", "Autre"];
 const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérifier"];
 
@@ -308,7 +312,7 @@ function zoneHtml(z, i, open) {
     ${area(z, "contraintes", "Contraintes particulières", "Poussière, humidité, bruit, ATEX, hygiène…")}
     <div class="row">${field(z, "tBas", "T° au sol (°C)", "text", 'inputmode="decimal"')}${field(z, "tHaut", "T° en hauteur (°C)", "text", 'inputmode="decimal"')}</div>
     <h2 style="margin-top:14px">Brasseurs</h2>
-    <div class="row">${select(z, "typeBrasseur", "Type de brasseur", TYPES_BRASSEUR)}${field(z, "diametre", "Diamètre", "text", 'placeholder="selon le modèle"')}</div>
+    <div class="row">${select(z, "typeBrasseur", "Type de brasseur", TYPES_BRASSEUR)}${select(z, "diametre", "Diamètre", optsDiametre(z))}</div>
     ${select(z, "position", "Positionnement", POSITIONS)}
     <h2 style="margin-top:14px">Électricité</h2>
     <div class="row">${select(z, "alim", "Alimentation", ALIMS)}${mfield(z, "distTableau", "Distance au tableau (m)")}</div>
@@ -340,6 +344,9 @@ function bindVisite() {
   app.onchange = async e => {
     const t = e.target;
     if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck();
+      if (t.dataset.k === "typeBrasseur") { const z = findObj(t.dataset.o), d = $("#" + z.id + "_diametre");
+        z.diametre = (DIAMETRES[z.typeBrasseur] || []).includes(z.diametre) ? z.diametre : ""; save();
+        d.innerHTML = optsDiametre(z).map(o => `<option ${o === z.diametre ? "selected" : ""}>${esc(o)}</option>`).join(""); }
       if (t.dataset.k === "typeClient") $("#autreBox").classList.toggle("hidden", t.value !== "Autre"); }
     if (t.dataset.obj) { const z = findObj(t.dataset.obj); z.objectifs = [...app.querySelectorAll(`[data-obj="${z.id}"]:checked`)].map(x => x.value); save(); }
     if (t.id === "pjInput") {
