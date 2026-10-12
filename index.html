@@ -100,7 +100,7 @@ const DB = {
 };
 
 // ---------- modèle ----------
-const VERSION = 19;
+const VERSION = 20;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 // date du téléphone (et non UTC : le soir aux Antilles, UTC est déjà le lendemain)
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -124,7 +124,7 @@ const ALIMS = ["", "Monophasé 230 V", "Triphasé 400 V", "Les deux", "À vérif
 
 function newZone(n) { return { id: uid(), nom: "Zone " + n, longueur: "", largeur: "", hSousPlafond: "", hFaitage: "", hSabliere: "",
   toiture: "", structure: "", entraxe: "", hLibre: "", contraintesHauteur: "", obstacles: "", ouvertures: "", ventilExistante: "",
-  activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", typeBrasseur: "", diametre: "", position: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
+  activite: "", personnes: "", objectifs: [], contraintes: "", tHaut: "", tBas: "", typeBrasseur: "", diametre: "", nbBrasseurs: "", position: "", alim: "", distTableau: "", remarques: "", photos: [], croquis: "" }; }
 function newVisite() { return { id: uid(), cree: Date.now(), date: today(), typeClient: "", typeClientAutre: "", client: "", contact: "", tel: "", email: "", adresse: "", gps: "",
   typeBat: "", remarques: "", statut: "en_cours", zones: [newZone(1)] }; }
 const estTermine = v => v.statut === "termine";
@@ -318,7 +318,7 @@ function zoneHtml(z, i, open) {
     <div class="row">${field(z, "tBas", "T° au sol (°C)", "text", 'inputmode="decimal"')}${field(z, "tHaut", "T° en hauteur (°C)", "text", 'inputmode="decimal"')}</div>
     <h2 style="margin-top:14px">Brasseurs</h2>
     <div class="row">${select(z, "typeBrasseur", "Type de brasseur", TYPES_BRASSEUR)}${select(z, "diametre", "Diamètre", optsDiametre(z))}</div>
-    ${select(z, "position", "Positionnement", POSITIONS)}
+    <div class="row">${field(z, "nbBrasseurs", "Nombre de brasseurs", "text", 'inputmode="numeric"')}${select(z, "position", "Positionnement", POSITIONS)}</div>
     <h2 style="margin-top:14px">Électricité</h2>
     <div class="row">${select(z, "alim", "Alimentation", ALIMS)}${mfield(z, "distTableau", "Distance au tableau (m)")}</div>
     <h2 style="margin-top:14px">Photos</h2>
@@ -473,7 +473,7 @@ function contenu(v) {
       { titre: "Obstacles et ouvertures", lignes: [["Obstacles au sol", z.obstacles], ["Ouvertures", z.ouvertures], ["Ventilation existante", z.ventilExistante]] },
       { titre: "Usage", lignes: [["Activité", z.activite], ["Personnes", z.personnes], ["Objectifs", z.objectifs], ["Contraintes", z.contraintes],
         ["Températures", (z.tBas || z.tHaut) ? `sol ${z.tBas || "?"} °C · hauteur ${z.tHaut || "?"} °C` : ""]] },
-      { titre: "Brasseurs", lignes: [["Type de brasseur", z.typeBrasseur], ["Diamètre", z.diametre], ["Positionnement", z.position]] },
+      { titre: "Brasseurs", lignes: [["Type de brasseur", z.typeBrasseur], ["Diamètre", z.diametre], ["Nombre", z.nbBrasseurs], ["Positionnement", z.position]] },
       { titre: "Électricité", lignes: [["Alimentation", z.alim], ["Distance tableau", m(z.distTableau)], ["Remarques", z.remarques]] }] });
   });
   const pj = v.pieces || [];
