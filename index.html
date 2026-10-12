@@ -100,6 +100,7 @@ const DB = {
 };
 
 // ---------- modèle ----------
+const VERSION = 19;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 // date du téléphone (et non UTC : le soir aux Antilles, UTC est déjà le lendemain)
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -181,6 +182,9 @@ function select(obj, key, lbl, opts) {
   const id = obj.id + "_" + key;
   return `<div><label for="${id}">${lbl}</label><select id="${id}" data-o="${obj.id}" data-k="${key}">${opts.map(o => `<option ${o === obj[key] ? "selected" : ""}>${esc(o)}</option>`).join("")}</select></div>`;
 }
+// redessine les deux menus Type / Diamètre d'une zone (remplace les éléments entiers, plus sûr sur iPhone)
+function majBrasseur(z) { const row = $("#" + z.id + "_typeBrasseur").closest(".row");
+  row.innerHTML = select(z, "typeBrasseur", "Type de brasseur", TYPES_BRASSEUR) + select(z, "diametre", "Diamètre", optsDiametre(z)); }
 function findObj(id) { return cur.id === id ? cur : cur.zones.find(z => z.id === id) || (cur.contacts || []).find(c => c.id === id); }
 
 // ---------- écran liste ----------
@@ -254,7 +258,7 @@ function renderVisite(openZone) {
   const v = cur;
   $("#title").textContent = v.client || "Nouvelle visite";
   const m = manquants(v);
-  $("#app").innerHTML = `<div class="saved" id="saved">✓ Enregistré automatiquement sur le téléphone</div>
+  $("#app").innerHTML = `<div class="saved" id="saved">✓ Enregistré automatiquement sur le téléphone</div><div class="saved" style="opacity:.6">version ${VERSION}</div>
   <details class="card" open><summary>Client et site</summary>
     <div class="row">${select(v, "typeClient", "Client", TYPES_CLIENT)}<div id="autreBox"${v.typeClient === "Autre" ? "" : ' class="hidden"'}>${field(v, "typeClientAutre", "Précisez")}</div></div>
     ${field(v, "client", "Raison sociale")}
@@ -346,11 +350,9 @@ function bindVisite() {
     const t = e.target;
     if (t.dataset.k) { findObj(t.dataset.o)[t.dataset.k] = t.value; save(); refreshCheck();
       if (t.dataset.k === "diametre" && t.value.includes(" – ")) { const z = findObj(t.dataset.o), [ty, d] = t.value.split(" – ");
-        z.typeBrasseur = ty; $("#" + z.id + "_typeBrasseur").value = ty; z.diametre = d; save();
-        t.innerHTML = optsDiametre(z).map(o => `<option ${o === d ? "selected" : ""}>${esc(o)}</option>`).join(""); }
+        z.typeBrasseur = ty; z.diametre = d; save(); majBrasseur(z); }
       if (t.dataset.k === "typeBrasseur") { const z = findObj(t.dataset.o), d = $("#" + z.id + "_diametre");
-        z.diametre = (DIAMETRES[z.typeBrasseur] || []).includes(z.diametre) ? z.diametre : ""; save();
-        d.innerHTML = optsDiametre(z).map(o => `<option ${o === z.diametre ? "selected" : ""}>${esc(o)}</option>`).join(""); }
+        z.diametre = (DIAMETRES[z.typeBrasseur] || []).includes(z.diametre) ? z.diametre : ""; save(); majBrasseur(z); }
       if (t.dataset.k === "typeClient") $("#autreBox").classList.toggle("hidden", t.value !== "Autre"); }
     if (t.dataset.obj) { const z = findObj(t.dataset.obj); z.objectifs = [...app.querySelectorAll(`[data-obj="${z.id}"]:checked`)].map(x => x.value); save(); }
     if (t.id === "pjInput") {
