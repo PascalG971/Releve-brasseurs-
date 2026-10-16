@@ -100,13 +100,13 @@ const DB = {
 };
 
 // ---------- modèle ----------
-const VERSION = 20;
+const VERSION = 21;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 // date du téléphone (et non UTC : le soir aux Antilles, UTC est déjà le lendemain)
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const TYPES_CLIENT = ["", "Client utilisateur", "Bureau d'étude", "Installateur", "Autre"];
 const typeClientTxt = v => v.typeClient === "Autre" ? (v.typeClientAutre ? "Autre : " + v.typeClientAutre : "Autre") : v.typeClient || "";
-const TYPES_BAT = ["", "Atelier / industrie", "Entrepôt / logistique", "Showroom / commerce", "Salle de sport / fitness", "Bâtiment agricole", "Bureaux / tertiaire", "ERP / salle polyvalente", "Restaurant", "Autre"];
+const TYPES_BAT = ["", "Atelier / industrie", "Entrepôt / logistique", "Showroom / commerce", "Salle de sport / fitness", "Bâtiment agricole", "Bureaux / tertiaire", "ERP / salle polyvalente", "Chapiteau", "Restaurant", "Autre"];
 const TOITURES = ["", "Plate", "1 pan", "2 pans", "Shed", "Voûte / cintrée", "Faux plafond"];
 const STRUCTURES = ["", "Charpente métallique", "Charpente bois", "Béton / dalle", "Faux plafond", "Autre"];
 const OBJECTIFS = ["Grand volume", "Rafraîchissement hybride", "Évacuation humidité / séchage", "Bien-être animal", "Autre"];
