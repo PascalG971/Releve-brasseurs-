@@ -100,7 +100,7 @@ const DB = {
 };
 
 // ---------- modèle ----------
-const VERSION = 21;
+const VERSION = 22;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 // date du téléphone (et non UTC : le soir aux Antilles, UTC est déjà le lendemain)
 const today = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -404,7 +404,7 @@ function locate() {
     cur.gps = p.coords.latitude.toFixed(5) + ", " + p.coords.longitude.toFixed(5);
     $("#" + cur.id + "_gps").value = cur.gps; save(); toast("Position enregistrée");
   }, err => err.code === 1
-    ? alert("L'iPhone refuse la localisation à l'appli.\n\nPour l'autoriser : Réglages › Confidentialité et sécurité › Service de localisation › Sites Safari › « Lorsque l'app est active ».\n\nPuis fermez et rouvrez l'appli Relevés.")
+    ? alert("L'iPhone refuse la localisation à l'appli. Deux réglages à vérifier :\n\n1. Réglages › Confidentialité et sécurité › Service de localisation › Sites Safari › « Lorsque l'app est active ».\n\n2. Réglages › Apps › Safari › Localisation › « Demander » (ou « Autoriser »).\n\nPuis fermez complètement l'appli Relevés, rouvrez-la et touchez « Localiser » : répondez « Autoriser ».")
     : toast("Position introuvable pour l'instant : réessayez à l'extérieur"), { enableHighAccuracy: true, timeout: 20000 });
 }
 
